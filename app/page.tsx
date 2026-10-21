@@ -67,7 +67,7 @@ export default function Home() {
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível entrar."); }
     finally { setBusy(false); }
   }
-  async function signOut() { await authClient.signOut(); setUser(null); setOrders([]); setMessage(""); setError(""); }
+  async function signOut() { await authClient.signOut(); setUser(null); setOrders([]); setMessage(""); setError(""); const setup = await fetch("/api/setup/status"); if (setup.ok) setSetupRequired(Boolean((await setup.json()).setupRequired)); }
   async function changePassword(e:React.FormEvent) {
     e.preventDefault(); setError(""); setMessage(""); setBusy(true);
     try {
