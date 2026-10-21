@@ -12,9 +12,10 @@ export async function POST(request: Request) {
     if (!body.currentPassword || !body.newPassword || body.newPassword.length < 12) {
       return NextResponse.json({ error: "A nova senha deve ter pelo menos 12 caracteres." }, { status: 400 });
     }
-    const { error } = await auth.api.changePassword({
-      headers: await headers(),
-      body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: true },
+    const { error } = await auth.changePassword({
+      currentPassword: body.currentPassword,
+      newPassword: body.newPassword,
+      revokeOtherSessions: true,
     });
     if (error) return NextResponse.json({ error: error.message ?? "Não foi possível alterar a senha." }, { status: 400 });
     await db()`UPDATE app_users SET must_change_password = false, updated_at = now() WHERE auth_user_id = ${user.auth_user_id}`;
