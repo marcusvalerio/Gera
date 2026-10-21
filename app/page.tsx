@@ -7,6 +7,7 @@ const authClient = createAuthClient();
 type Profile = { username:string; display_name:string; role:"super_admin"|"admin"|"technician"; must_change_password:boolean };
 type Order = { id:string; order_number:string|null; title:string; description:string|null; location:string|null; equipment:string|null; priority:string; status:string; assigned_username:string|null; scheduled_for:string|null };
 type Summary = { total:number; new:number; changed:number; unchanged:number; existing:number; notInFile:number; completedPreserved:number; preview:Array<Record<string,unknown>> };
+type Allocation = { periodDays:number; daily:Array<{day:string;minutes:number;orders:number}>; people:Array<{name:string;minutes:number;orders:number}>; totals:{minutes:number;orders:number;days:number} };
 type Analytics = { periodDays:number; summary:Record<string,number>; byStatus:Array<{status:string;count:number}>; byPriority:Array<{priority:string;count:number}>; trend:Array<{day:string;created:number;completed:number}>; byTechnician:Array<{username:string;total:number;completed:number;pending:number;overdue:number}>; occurrences:Array<{category:string;status:string;count:number}>; imports:Array<Record<string,unknown>>; recentOrders:Array<Record<string,unknown>> };
 
 export default function Home() {
@@ -29,8 +30,9 @@ export default function Home() {
   const [message,setMessage] = useState("");
   const [error,setError] = useState("");
   const [busy,setBusy] = useState(false);
-  const [tab,setTab] = useState<"dashboard"|"orders"|"import"|"users"|"security">("dashboard");
+  const [tab,setTab] = useState<"dashboard"|"placar"|"allocation"|"orders"|"import"|"users"|"security">("dashboard");
   const [analytics,setAnalytics] = useState<Analytics|null>(null);
+  const [allocation,setAllocation] = useState<Allocation|null>(null);
   const [periodDays,setPeriodDays] = useState(30);
   const [analyticsBusy,setAnalyticsBusy] = useState(false);
   const [ready,setReady] = useState(false);
@@ -88,6 +90,23 @@ export default function Home() {
     } finally {
       setAnalyticsBusy(false);
     }
+  }
+  async function loadAllocation(days = periodDays) {
+    setAnalyticsBusy(true);
+    try {
+      const res = await fetch(`/api/admin/allocation?days=${days}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Não foi possível carregar a alocação.");
+      setAllocation(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao carregar alocação.");
+    } finally {
+      setAnalyticsBusy(false);
+    }
+  }
+  function formatMinutes(value:number) {
+    const minutes = Number(value || 0);
+    return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}min`;
   }
   function exportAnalyticsCsv() {
     if (!analytics) return;
@@ -160,8 +179,16 @@ export default function Home() {
   const admin = user.role!=="technician";
   return <main className="shell"><header className="header"><div><div className="brand">gera<span style={{color:"var(--accent)"}}>.</span></div><div className="muted">Ordens do Dia · Olá, {user.display_name}</div></div><div className="row"><span className="muted">{user.role==="super_admin"?"Administrador principal":admin?"Administrador":"Técnico"}</span><button className="btn ghost" onClick={signOut}>Sair</button></div></header>
     <section className="grid"><div className="panel"><div className="muted">Atividades visíveis</div><div className="stats">{orders.length}</div></div><div className="panel"><div className="muted">Em andamento</div><div className="stats">{orders.filter(o=>o.status==="in_progress").length}</div></div><div className="panel"><div className="muted">Concluídas</div><div className="stats">{orders.filter(o=>o.status==="completed").length}</div></div></section>
-    {admin&&<nav className="tabs"><button className={"tab "+(tab==="dashboard"?"active":"")} onClick={()=>{setTab("dashboard");void loadAnalytics();}}>Dashboard</button><button className={"tab "+(tab==="orders"?"active":"")} onClick={()=>setTab("orders")}>Atividades</button><button className={"tab "+(tab==="import"?"active":"")} onClick={()=>setTab("import")}>Importar Excel</button><button className={"tab "+(tab==="users"?"active":"")} onClick={()=>setTab("users")}>Usuários</button><button className={"tab "+(tab==="security"?"active":"")} onClick={()=>setTab("security")}>Segurança</button></nav>}
+    {admin&&<nav className="tabs"><button className={"tab "+(tab==="dashboard"?"active":"")} onClick={()=>{setTab("dashboard");void loadAnalytics();}}>Dashboard</button><button className={"tab "+(tab==="placar"?"active":"")} onClick={()=>{setTab("placar");void loadAnalytics();}}>Placar</button><button className={"tab "+(tab==="allocation"?"active":"")} onClick={()=>{setTab("allocation");void loadAllocation();}}>Alocação</button><button className={"tab "+(tab==="orders"?"active":"")} onClick={()=>setTab("orders")}>Atividades</button><button className={"tab "+(tab==="import"?"active":"")} onClick={()=>setTab("import")}>Importar Excel</button><button className={"tab "+(tab==="users"?"active":"")} onClick={()=>setTab("users")}>Usuários</button><button className={"tab "+(tab==="security"?"active":"")} onClick={()=>setTab("security")}>Segurança</button></nav>}
     {error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}
+    {admin&&tab==="placar"&&<section className="stack">
+      <div className="spread dashboard-heading"><div><h1>Placar operacional</h1><p className="muted">Ranking de colaboradores por volume de trabalho registrado na planilha.</p></div><div className="row"><select className="field period-select" aria-label="Período do placar" value={periodDays} onChange={e=>{const d=Number(e.target.value);setPeriodDays(d);void loadAnalytics(d);}}><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option></select><button className="btn ghost" onClick={()=>void loadAnalytics()}>Atualizar</button></div></div>
+      {!analytics?<div className="panel">Carregando placar…</div>:<><div className="grid"><div className="panel kpi"><span className="muted">Ordens registradas</span><strong className="stats">{analytics.summary.total??0}</strong></div><div className="panel kpi"><span className="muted">Concluídas</span><strong className="stats">{analytics.summary.completed??0}</strong></div><div className="panel kpi"><span className="muted">Taxa de conclusão</span><strong className="stats">{analytics.summary.completionRate??0}%</strong></div></div><div className="panel stack"><h2>Ranking por colaborador</h2>{analytics.byTechnician.length===0?<p className="muted">Ainda não há colaboradores atribuídos nas ordens.</p>:<div className="table-wrap"><table><thead><tr><th>Posição</th><th>Colaborador</th><th>Ordens</th><th>Concluídas</th><th>Pendentes</th><th>Atrasadas</th></tr></thead><tbody>{analytics.byTechnician.map((t,i)=><tr key={t.username}><td>{i+1}º</td><td>{t.username}</td><td>{t.total}</td><td>{t.completed}</td><td>{t.pending}</td><td>{t.overdue}</td></tr>)}</tbody></table></div>}</div></>}
+    </section>}
+    {admin&&tab==="allocation"&&<section className="stack">
+      <div className="spread dashboard-heading"><div><h1>Alocação de trabalho</h1><p className="muted">Tempo previsto por dia, calculado a partir da coluna Trabalho em minutos.</p></div><div className="row"><select className="field period-select" aria-label="Período da alocação" value={periodDays} onChange={e=>{const d=Number(e.target.value);setPeriodDays(d);void loadAllocation(d);}}><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option></select><button className="btn ghost" onClick={()=>void loadAllocation()}>Atualizar</button></div></div>
+      {!allocation?<div className="panel">Carregando alocação…</div>:<><div className="grid"><div className="panel kpi"><span className="muted">Tempo total cadastrado</span><strong className="stats">{formatMinutes(allocation.totals.minutes)}</strong><span className="kpi-note">{allocation.totals.orders} ordens</span></div><div className="panel kpi"><span className="muted">Dias com atividade</span><strong className="stats">{allocation.totals.days}</strong></div><div className="panel kpi"><span className="muted">Carga média por ordem</span><strong className="stats">{formatMinutes(allocation.totals.orders?Math.round(allocation.totals.minutes/allocation.totals.orders):0)}</strong></div></div><div className="panel stack"><h2>Tempo por dia</h2>{allocation.daily.length===0?<p className="muted">Não há tempos de trabalho importados para o período.</p>:<div className="table-wrap"><table><thead><tr><th>Data</th><th>Ordens</th><th>Tempo total</th></tr></thead><tbody>{allocation.daily.map((d)=><tr key={d.day}><td>{d.day==="Sem data"?d.day:new Date(d.day+"T12:00:00").toLocaleDateString("pt-BR")}</td><td>{d.orders}</td><td>{formatMinutes(d.minutes)}</td></tr>)}</tbody></table></div>}</div><div className="panel stack"><h2>Distribuição por colaborador</h2>{allocation.people.length===0?<p className="muted">Nenhum colaborador encontrado.</p>:<div className="table-wrap"><table><thead><tr><th>Colaborador</th><th>Ordens</th><th>Tempo alocado</th></tr></thead><tbody>{allocation.people.map(p=><tr key={p.name}><td>{p.name}</td><td>{p.orders}</td><td>{formatMinutes(p.minutes)}</td></tr>)}</tbody></table></div>}</div></>}
+    </section>}
     {admin&&tab==="dashboard"&&<section className="stack">
       <div className="spread dashboard-heading"><div><h1>Visão gerencial</h1><p className="muted">Indicadores operacionais baseados nos dados do Gera.</p></div><div className="row"><select className="field period-select" aria-label="Período do relatório" value={periodDays} onChange={e=>{const d=Number(e.target.value);setPeriodDays(d);void loadAnalytics(d);}}><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option></select><button className="btn ghost" onClick={()=>void loadAnalytics()}>Atualizar</button><button className="btn secondary" disabled={!analytics} onClick={exportAnalyticsCsv}>Exportar CSV</button></div></div>
       {analyticsBusy&&!analytics?<div className="panel">Carregando indicadores…</div>:!analytics?<div className="panel"><p className="muted">Ainda não foi possível carregar os indicadores.</p><button className="btn" onClick={()=>void loadAnalytics()}>Tentar novamente</button></div>:<>
