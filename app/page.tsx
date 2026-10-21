@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { createAuthClient } from "@neondatabase/auth/next";
-import { loginEmail } from "@/lib/username";
+import { loginEmail, makeUsername } from "@/lib/username";
 
 const authClient = createAuthClient();
 type Profile = { username:string; display_name:string; role:"super_admin"|"admin"|"technician"; must_change_password:boolean };
@@ -11,6 +11,10 @@ type Summary = { total:number; new:number; existing:number; completedPreserved:n
 export default function Home() {
   const [user,setUser] = useState<Profile|null>(null);
   const [orders,setOrders] = useState<Order[]>([]);
+  const [setupRequired,setSetupRequired] = useState(false);
+  const [setupName,setSetupName] = useState("");
+  const [setupPassword,setSetupPassword] = useState("");
+  const [setupSecret,setSetupSecret] = useState("");
   const [login,setLogin] = useState("");
   const [password,setPassword] = useState("");
   const [currentPassword,setCurrentPassword] = useState("");
@@ -28,7 +32,7 @@ export default function Home() {
 
   const load = useCallback(async () => {
     const me = await fetch("/api/me");
-    if (!me.ok) { setUser(null); setReady(true); return; }
+    if (!me.ok) { setUser(null); const setup = await fetch("/api/setup/status"); if (setup.ok) setSetupRequired(Boolean((await setup.json()).setupRequired)); setReady(true); return; }
     const payload = await me.json();
     setUser(payload.user);
     if (!payload.user.must_change_password) {
@@ -39,6 +43,18 @@ export default function Home() {
   },[]);
   useEffect(() => { void load(); },[load]);
 
+  async function bootstrap(e:React.FormEvent) {
+    e.preventDefault(); setError(""); setMessage(""); setBusy(true);
+    try {
+      const username = makeUsername(setupName);
+      const created = await authClient.signUp.email({ email: loginEmail(username), password: setupPassword, name: setupName.trim() });
+      if (created.error) throw new Error(created.error.message || "Não foi possível criar a conta inicial.");
+      const response = await fetch("/api/setup/bootstrap",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:setupName,secret:setupSecret})});
+      const data = await response.json(); if(!response.ok) throw new Error(data.error || "Falha ao configurar administrador.");
+      setMessage(`Administrador principal configurado: ${data.username}`); setSetupPassword(""); setSetupSecret(""); await load();
+    } catch(e) { setError(e instanceof Error ? e.message : "Falha na configuração inicial."); }
+    finally { setBusy(false); }
+  }
   async function signIn(e:React.FormEvent) {
     e.preventDefault(); setError(""); setBusy(true);
     try {
@@ -89,10 +105,10 @@ export default function Home() {
   if(!ready) return <main className="shell"><div className="panel">Carregando Gera…</div></main>;
   if(!user) return <main className="shell" style={{maxWidth:480,paddingTop:"10vh"}}>
     <header className="header"><div><div className="brand">gera<span style={{color:"var(--accent)"}}>.</span></div><div className="muted">Ordens do Dia · Gestão de atividades</div></div></header>
-    <section className="panel stack"><div><h1>Entrar no Gera</h1><p className="muted">Use o login fornecido pelo administrador.</p></div>
-      <form className="stack" onSubmit={signIn}><div><label className="label">Login</label><input className="field" autoComplete="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="anderson.motta" required /></div><div><label className="label">Senha</label><input className="field" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Entrando…":"Entrar"}</button></form>
-      {error&&<p className="error">{error}</p>}<p className="muted">O acesso é criado por um administrador. Não há cadastro público.</p>
-    </section></main>;
+    <section className="panel stack">{setupRequired?<><div><h1>Configuração inicial</h1><p className="muted">Crie a conta do administrador principal. Este formulário desaparece após a configuração inicial.</p></div>
+      <form className="stack" onSubmit={bootstrap}><div><label className="label">Nome completo</label><input className="field" autoComplete="name" value={setupName} onChange={e=>setSetupName(e.target.value)} placeholder="Seu nome e sobrenome" required /></div><div><label className="label">Senha inicial (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={setupPassword} onChange={e=>setSetupPassword(e.target.value)} required /></div><div><label className="label">Código de configuração</label><input className="field" type="password" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Configurando…":"Criar administrador principal"}</button></form><p className="muted">Antes de abrir o sistema, configure GERA_BOOTSTRAP_SECRET na Vercel com um segredo aleatório de pelo menos 20 caracteres. O login inicial será gerado pelo nome.</>:<><div><h1>Entrar no Gera</h1><p className="muted">Use o login fornecido pelo administrador.</p></div>
+      <form className="stack" onSubmit={signIn}><div><label className="label">Login</label><input className="field" autoComplete="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="anderson.motta" required /></div><div><label className="label">Senha</label><input className="field" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Entrando…":"Entrar"}</button></form><p className="muted">O acesso é criado por um administrador. Não há cadastro público.</>}</section>
+    {error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}</main>;
   if(user.must_change_password) return <main className="shell" style={{maxWidth:520,paddingTop:"8vh"}}><section className="panel stack"><div className="brand">Primeiro acesso</div><h1>Crie sua senha pessoal</h1><p className="muted">Por segurança, você precisa substituir a senha provisória antes de acessar suas atividades.</p><form className="stack" onSubmit={changePassword}><div><label className="label">Senha provisória atual</label><input className="field" type="password" autoComplete="current-password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} required /></div><div><label className="label">Nova senha (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNewPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Salvando…":"Salvar nova senha"}</button></form>{error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}</section></main>;
 
   const admin = user.role!=="technician";
