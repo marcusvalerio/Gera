@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
     const authBaseUrl = process.env.NEON_AUTH_BASE_URL;
     if (!authBaseUrl) return NextResponse.json({ error: "NEON_AUTH_BASE_URL não está configurada." }, { status: 503 });
-    const authResponse = await fetch(`${authBaseUrl.replace(/\\/$/, "")}/sign-up/email`, {
+    const authResponse = await fetch(`${authBaseUrl.endsWith("/") ? authBaseUrl.slice(0, -1) : authBaseUrl}/sign-up/email`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: new URL(request.url).origin },
       body: JSON.stringify({ email: loginEmail(username), password: temporaryPassword, name }),
