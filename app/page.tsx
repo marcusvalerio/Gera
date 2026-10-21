@@ -93,8 +93,8 @@ export default function Home() {
     const rows = [["Indicador","Valor"],["Total de ordens",analytics.summary.total],["Pendentes",analytics.summary.pending],["Em andamento",analytics.summary.in_progress],["Concluídas",analytics.summary.completed],["Bloqueadas",analytics.summary.blocked],["Atrasadas",analytics.summary.overdue],["Taxa de conclusão (%)",analytics.summary.completionRate]];
     rows.push(["",""],["Técnico","Total","Concluídas","Pendentes","Atrasadas"]);
     analytics.byTechnician.forEach(t => rows.push([t.username,String(t.total),String(t.completed),String(t.pending),String(t.overdue)]));
-    const csv = rows.map(row => row.map(value => `"${String(value ?? "").replace(/"/g,'""')}"`).join(";")).join("\\n");
-    const blob = new Blob(["\\uFEFF",csv],{type:"text/csv;charset=utf-8;"});
+    const csv = rows.map(row => row.map(value => `"${String(value ?? "").replace(/"/g,'""')}"`).join(";")).join("\n");
+    const blob = new Blob(["\uFEFF",csv],{type:"text/csv;charset=utf-8;"});
     const url = URL.createObjectURL(blob); const link = document.createElement("a");
     link.href = url; link.download = `gera-relatorio-${periodDays}d.csv`; link.click(); URL.revokeObjectURL(url);
   }
