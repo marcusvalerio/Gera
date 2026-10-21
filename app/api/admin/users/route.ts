@@ -20,13 +20,11 @@ export async function POST(request: Request) {
     const duplicate = await sql`SELECT 1 FROM app_users WHERE username = ${username} LIMIT 1`;
     if (duplicate.length) return NextResponse.json({ error: `O login ${username} já existe. Edite o nome ou cadastre uma variação.` }, { status: 409 });
 
-    const { data: created, error } = await auth.api.createUser({
-      headers: await headers(),
+    const { data: created, error } = await auth.api.signUpEmail({
       body: {
         email: loginEmail(username),
         password: temporaryPassword,
         name,
-        role: role === "admin" ? "admin" : "user",
       },
     });
     if (error || !created?.user?.id) return NextResponse.json({ error: error?.message ?? "Não foi possível criar o usuário no Neon Auth." }, { status: 400 });
