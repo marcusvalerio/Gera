@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/permissions";
 import { loginEmail, makeUsername } from "@/lib/username";
@@ -19,15 +18,21 @@ export async function POST(request: Request) {
     const duplicate = await sql`SELECT 1 FROM app_users WHERE username = ${username} LIMIT 1`;
     if (duplicate.length) return NextResponse.json({ error: `O login ${username} já existe. Edite o nome ou cadastre uma variação.` }, { status: 409 });
 
-    const { data: created, error } = await auth.signUp.email({
-      email: loginEmail(username),
-      password: temporaryPassword,
-      name,
+    const authBaseUrl = process.env.NEON_AUTH_BASE_URL;
+    if (!authBaseUrl) return NextResponse.json({ error: "NEON_AUTH_BASE_URL não está configurada." }, { status: 503 });
+    const authResponse = await fetch(`${authBaseUrl.replace(/\\/$/, "")}/sign-up/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: new URL(request.url).origin },
+      body: JSON.stringify({ email: loginEmail(username), password: temporaryPassword, name }),
+      cache: "no-store",
     });
-    if (error || !created?.user?.id) return NextResponse.json({ error: error?.message ?? "Não foi possível criar o usuário no Neon Auth." }, { status: 400 });
+    const authPayload = await authResponse.json() as { user?: { id?: string }; message?: string; error?: { message?: string } };
+    if (!authResponse.ok || !authPayload.user?.id) {
+      return NextResponse.json({ error: authPayload.message ?? authPayload.error?.message ?? "Não foi possível criar o usuário no Neon Auth." }, { status: 400 });
+    }
 
-    await sql`INSERT INTO app_users (auth_user_id, username, display_name, role, must_change_password, created_by) VALUES (${created.user.id}, ${username}, ${name}, ${role}, true, ${actor.auth_user_id})`;
-    await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'user.created', 'app_user', ${created.user.id}, ${JSON.stringify({ username, role })}::jsonb)`;
+    await sql`INSERT INTO app_users (auth_user_id, username, display_name, role, must_change_password, created_by) VALUES (${authPayload.user.id}, ${username}, ${name}, ${role}, true, ${actor.auth_user_id})`;
+    await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'user.created', 'app_user', ${authPayload.user.id}, ${JSON.stringify({ username, role })}::jsonb)`;
     return NextResponse.json({ user: { username, name, role }, temporaryPassword, note: "A senha é exibida uma única vez. Entregue-a ao usuário com segurança." }, { status: 201 });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
