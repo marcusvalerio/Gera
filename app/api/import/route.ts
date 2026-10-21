@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import * as XLSX from "xlsx";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/permissions";
+import { usernameFromDisplayName } from "@/lib/username";
 
 export const runtime = "nodejs";
 type ImportRow = { external_key: string; order_number: string | null; title: string; description: string | null; location: string | null; equipment: string | null; assigned_username: string | null; priority: "low" | "normal" | "high" | "critical"; scheduled_for: string | null; source_data: Record<string, unknown> };
@@ -34,7 +35,7 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const stable = order || [title, equipment, location].filter(Boolean).join("|");
     if (!stable || !title) throw new Error(`Linha ${index + 2}: não foi possível identificar a ordem ou a atividade.`);
     const external_key = order ? `os:${order.toLowerCase()}` : `hash:${createHash("sha256").update(stable.toLowerCase()).digest("hex").slice(0,32)}`;
-    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? technician.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g,".") : null, priority, scheduled_for, source_data: r };
+    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, source_data: r };
   });
   const seen = new Set<string>();
   for (const row of rows) { if (seen.has(row.external_key)) throw new Error(`A planilha contém identificador duplicado: ${row.order_number ?? row.title}.`); seen.add(row.external_key); }
