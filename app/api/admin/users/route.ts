@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     if (!createdUser?.id) return NextResponse.json({ error: "O Neon Auth não retornou o identificador do usuário. Verifique se o cadastro foi criado antes de tentar novamente." }, { status: 400 });
 
     await sql`INSERT INTO app_users (auth_user_id, username, display_name, role, must_change_password, created_by) VALUES (${createdUser.id}, ${username}, ${name}, ${role}, true, ${actor.auth_user_id})`;
-    await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'user.created', 'app_user', ${created.user.id}, ${JSON.stringify({ username, role })}::jsonb)`;
+    await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'user.created', 'app_user', ${createdUser.id}, ${JSON.stringify({ username, role })}::jsonb)`;
     return NextResponse.json({ user: { username, name, role }, temporaryPassword, note: "A senha é exibida uma única vez. Entregue-a ao usuário com segurança." }, { status: 201 });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
