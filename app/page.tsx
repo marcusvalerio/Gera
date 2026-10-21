@@ -49,6 +49,8 @@ export default function Home() {
       const username = makeUsername(setupName);
       const created = await authClient.signUp.email({ email: loginEmail(username), password: setupPassword, name: setupName.trim() });
       if (created.error) throw new Error(created.error.message || "Não foi possível criar a conta inicial.");
+      const signedIn = await authClient.signIn.email({ email: loginEmail(username), password: setupPassword });
+      if (signedIn.error) throw new Error(signedIn.error.message || "Conta criada, mas não foi possível iniciar a sessão. Tente entrar com o login gerado.");
       const response = await fetch("/api/setup/bootstrap",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:setupName,secret:setupSecret})});
       const data = await response.json(); if(!response.ok) throw new Error(data.error || "Falha ao configurar administrador.");
       setMessage(`Administrador principal configurado: ${data.username}`); setSetupPassword(""); setSetupSecret(""); await load();
