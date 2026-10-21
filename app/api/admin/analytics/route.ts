@@ -28,12 +28,12 @@ export async function GET(request: Request) {
         FROM generate_series(CURRENT_DATE - ((${days} - 1) * interval '1 day'), CURRENT_DATE, interval '1 day') AS d(day)
         LEFT JOIN work_orders w ON w.created_at::date = d.day OR w.completed_at::date = d.day
         GROUP BY d.day ORDER BY d.day`,
-      sql`SELECT COALESCE(assigned_username, 'Não atribuído') AS username,
+      sql`SELECT COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') AS username,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
         COUNT(*) FILTER (WHERE status IN ('pending','blocked'))::int AS pending,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue
-        FROM work_orders GROUP BY assigned_username ORDER BY completed DESC, total DESC LIMIT 20`,
+        FROM work_orders GROUP BY COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') ORDER BY completed DESC, total DESC LIMIT 20`,
       sql`SELECT category, status, COUNT(*)::int AS count FROM occurrences WHERE created_at >= now() - (${days}::text || ' days')::interval GROUP BY category, status ORDER BY count DESC LIMIT 30`,
       sql`SELECT id, filename, status, total_rows, created_count, updated_count, unchanged_count, error_count, created_at, applied_at
         FROM imports ORDER BY created_at DESC LIMIT 10`,
