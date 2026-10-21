@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { headers } from "next/headers";
 import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/permissions";
@@ -20,16 +19,14 @@ export async function POST(request: Request) {
     const duplicate = await sql`SELECT 1 FROM app_users WHERE username = ${username} LIMIT 1`;
     if (duplicate.length) return NextResponse.json({ error: `O login ${username} já existe. Edite o nome ou cadastre uma variação.` }, { status: 409 });
 
-    const { data: created, error } = await auth.api.signUpEmail({
-      body: {
-        email: loginEmail(username),
-        password: temporaryPassword,
-        name,
-      },
+    const createdResult = await auth.api.signUpEmail({
+      body: { email: loginEmail(username), password: temporaryPassword, name },
     });
-    if (error || !created?.user?.id) return NextResponse.json({ error: error?.message ?? "Não foi possível criar o usuário no Neon Auth." }, { status: 400 });
+    const createdUser = (createdResult as unknown as { user?: { id?: string }; data?: { user?: { id?: string } } })?.user
+      ?? (createdResult as unknown as { data?: { user?: { id?: string } } })?.data?.user;
+    if (!createdUser?.id) return NextResponse.json({ error: "O Neon Auth não retornou o identificador do usuário. Verifique se o cadastro foi criado antes de tentar novamente." }, { status: 400 });
 
-    await sql`INSERT INTO app_users (auth_user_id, username, display_name, role, must_change_password, created_by) VALUES (${created.user.id}, ${username}, ${name}, ${role}, true, ${actor.auth_user_id})`;
+    await sql`INSERT INTO app_users (auth_user_id, username, display_name, role, must_change_password, created_by) VALUES (${createdUser.id}, ${username}, ${name}, ${role}, true, ${actor.auth_user_id})`;
     await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'user.created', 'app_user', ${created.user.id}, ${JSON.stringify({ username, role })}::jsonb)`;
     return NextResponse.json({ user: { username, name, role }, temporaryPassword, note: "A senha é exibida uma única vez. Entregue-a ao usuário com segurança." }, { status: 201 });
   } catch (error) {
