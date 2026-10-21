@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 
@@ -41,6 +40,3 @@ export async function requireAdmin(allowSuperOnly = false) {
   return user;
 }
 
-export async function authHeaders() {
-  return headers();
-}
