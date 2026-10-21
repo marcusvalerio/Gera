@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ordens do Dia</title>
+<style>
+:root{--bg:#f4f6f8;--sf:#fff;--tx:#1b1f24;--mu:#5f6b76;--bd:#d6dbe1;--ac:#0b5cab;--rd:#c62828;--gn:#2e7d32;--hd:#e8edf2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101316;--sf:#191d21;--tx:#e7eaed;--mu:#9aa5b0;--bd:#2d343b;--ac:#5aa7ee;--rd:#ef6a6a;--gn:#67c26b;--hd:#232a31}}
+:root[data-theme="dark"]{--bg:#101316;--sf:#191d21;--tx:#e7eaed;--mu:#9aa5b0;--bd:#2d343b;--ac:#5aa7ee;--rd:#ef6a6a;--gn:#67c26b;--hd:#232a31}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:12px}
+h1{font-size:19px;margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.sub{color:var(--mu);font-size:12px}
+select,input,button,label.btn{font:inherit;color:var(--tx);background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+button,label.btn{cursor:pointer;display:inline-block}
+.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+.ok{background:var(--gn);border-color:var(--gn);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.tabs button{flex:1;min-width:90px;padding:9px 6px;font-size:14px}
+.tabs button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+#msg{margin:6px 0;color:var(--mu);font-size:13px}
+.box{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:10px}
+.login{max-width:360px;margin:12vh auto 0;display:grid;gap:10px}
+.login select,.login input,.login button{width:100%}
+.err{color:var(--rd);min-height:1.2em;font-size:13px}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+.kpi div{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.kpi b{display:block;font-size:26px}.kpi span{color:var(--mu);font-size:12px}
+.cd{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:8px;display:grid;gap:6px}
+.cd.v{border-left:4px solid var(--rd)}.cd.h{border-left:4px solid var(--ac)}.cd.f{opacity:.6}
+.cd .r1{display:flex;justify-content:space-between;gap:8px}
+.cd button{width:100%;padding:12px}
+.bd{font-size:12px;color:var(--mu)}
+a.btn{font:inherit;text-decoration:none;text-align:center;border:1px solid var(--bd);border-radius:10px;padding:10px 12px;display:block;color:var(--tx);background:var(--sf)}
+a.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+label.bd{display:block;margin:8px 0 2px}
+.fm input,.fm select{width:100%}
+.bad{border-color:var(--rd)!important}
+.ferr{background:rgba(198,40,40,.1);border:1px solid var(--rd);color:var(--rd);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:13px}.ferr ul{margin:4px 0 0;padding-left:18px}
+.dng{color:var(--rd)}
+textarea{font:inherit;color:var(--tx);background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;width:100%}
+.cd select{width:100%}
+.wrap{overflow-x:auto;border:1px solid var(--bd);border-radius:10px;background:var(--sf)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+td.t{white-space:normal;min-width:220px}
+th{background:var(--hd);font-size:12px}
+tr.v td:first-child{box-shadow:inset 3px 0 var(--rd)}tr.h td:first-child{box-shadow:inset 3px 0 var(--ac)}
+input[type=checkbox]{width:20px;height:20px;padding:0}
+.pb{height:8px;background:var(--hd);border-radius:4px;min-width:80px}.pb i{display:block;height:100%;background:var(--gn);border-radius:4px}
+.emp{padding:24px;text-align:center;color:var(--mu)}
+</style>
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <h1>Ordens do Dia</h1>
+  <select id="lu"></select>
+  <input id="lp" type="password" inputmode="numeric" placeholder="Senha" autocomplete="off">
+  <button class="pri" id="le">Entrar</button>
+  <div class="err" id="lerr"></div>
+</div>
+<div id="app" hidden>
+  <div class="top"><div><h1>Ordens do Dia</h1><div class="sub" id="sub"></div></div><button id="sair">Sair</button></div>
+  <div class="row tabs" id="tabs"></div>
+  <div id="msg"></div>
+  <div id="main"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const SENHA='0000',ADM='0101',ADMN='Administrador';
+const $=s=>document.querySelector(s);
+let col=null,hcol=null,rows=[],hist=[],ed=null,fm=null,pending=null,user=null,tab='ativ',per='hoje',flt='',ready=false;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rr=()=>{if(!ed&&!fm)render()};
+const msg=t=>{$('#msg').textContent=t||''};
+const hoje=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const br=i=>i?i.split('-').reverse().join('/'):'';
+const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const ativa=r=>r.ativa!==false;
+const rid=r=>r.ordem+'_'+(r.op||'0');
+function isoDate(v){
+  if(typeof v==='number')return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,10);
+  const s=String(v||'').trim();let m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  m=s.match(/^\d{4}-\d{2}-\d{2}/);return m?m[0]:'';
+}
+function mapRow(o){
+  const g=(...k)=>{for(const x of k){if(o[x]!==undefined&&o[x]!=='')return o[x]}return ''};
+  return {nome:String(g('nome')).trim().toUpperCase(),ordem:String(g('ordem')).trim(),op:String(g('operacao','op')).trim(),data:isoDate(g('data')),obs:String(g('obs')),semana:String(g('semana')),ind:String(g('indicador','ind')),tam:String(g('tam')),loc:String(g('locinstalacao','loc')),texto:String(g('textobreve','texto'))};
+}
+const normKeys=r=>{const o={};for(const k in r)o[norm(k)]=r[k];return o};
+async function lerPlanilha(f){
+  const wb=XLSX.read(await f.arrayBuffer());
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}).map(r=>mapRow(normKeys(r)));
+}
+async function pdfParaImgs(f){
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise,out=[];
+  for(let p=1;p<=Math.min(pdf.numPages,6);p++){
+    const pg=await pdf.getPage(p),vp=pg.getViewport({scale:2}),c=document.createElement('canvas');
+    c.width=vp.width;c.height=vp.height;
+    await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+    out.push(await new Promise(r=>c.toBlob(r,'image/jpeg',.9)));
+  }
+  return out;
+}
+const PROMPT='A imagem mostra uma tabela de ordens de manutenção com colunas: Nome, Execução, Ordem, Operação, Data, Obs, Semana, Indicador, TAM, Loc.Instalação, Texto breve. Extraia TODAS as linhas visíveis, sem inventar nenhuma. Responda somente com um array JSON de objetos com as chaves: nome, ordem, op, data (DD/MM/AAAA), obs, semana, ind, tam, loc, texto. Se o texto estiver cortado, transcreva só o que está visível.';
+async function lerImgs(blobs){
+  const sample=await claude.use('sample');
+  if(!sample)throw new Error('Leitura de imagem indisponível nesta visualização');
+  const out=[];
+  for(let i=0;i<blobs.length;i++){
+    msg('Lendo imagem '+(i+1)+' de '+blobs.length+'…');
+    const arr=await sample.json(PROMPT,{images:[blobs[i]]});
+    (Array.isArray(arr)?arr:[]).forEach(r=>out.push(mapRow(normKeys(r))));
+  }
+  return out;
+}
+async function importar(files){
+  if(!files.length)return;
+  msg('Lendo arquivo…');let out=[];
+  try{
+    for(const f of files){
+      const n=f.name.toLowerCase();
+      if(/\.(xlsx|xls|csv)$/.test(n))out.push(...await lerPlanilha(f));
+      else if(n.endsWith('.pdf'))out.push(...await lerImgs(await pdfParaImgs(f)));
+      else out.push(...await lerImgs([f]));
+    }
+  }catch(e){msg('Erro ao ler: '+(e.message||e.code||e));return}
+  const m=new Map();out.filter(r=>r.ordem).forEach(r=>m.set(rid(r),r));
+  pending={arq:files.map(f=>f.name).join(', '),list:[...m.values()]};msg('');render();
+}
+function placar(list){
+  const p={};
+  list.forEach(r=>{const n=r.nome||'(sem nome)';p[n]=p[n]||{n,t:0,f:0,h:0,v:0};p[n].t++;
+    if(r.exec){p[n].f++;if(r.execDia===hoje())p[n].h++}else if(r.data&&r.data<hoje())p[n].v++});
+  return Object.values(p);
+}
+async function lote(arr,fn){for(let i=0;i<arr.length;i+=10)await Promise.all(arr.slice(i,i+10).map(fn))}
+async function aplicar(){
+  if(!col){msg('Banco de dados indisponível.');return}
+  try{
+    msg('Atualizando a planilha…');
+    const at=rows.filter(ativa);
+    if(rows.length)await hcol.add({ts:new Date().toISOString(),arq:pending.arq,total:at.length,feitas:at.filter(r=>r.exec).length,acum:rows.filter(r=>r.exec).length,pessoas:placar(at)});
+    const old=new Map(rows.map(r=>[r.id,r])),ids=new Set(pending.list.map(rid));
+    await lote(pending.list,r=>{const o=old.get(rid(r));return col.doc(rid(r)).set({...r,data:o?.dataMan?o.data:r.data,dataMan:o?.dataMan||false,exec:o?.exec||false,execBy:o?.execBy||'',execDia:o?.execDia||'',ocor:o?.ocor||'',nota:o?.nota||'',notaPor:o?.notaPor||'',notaDia:o?.notaDia||'',tratada:o?.tratada||false,ativa:true})});
+    await lote(at.filter(r=>!ids.has(r.id)&&!r.manual),r=>col.doc(r.id).update({ativa:false}));
+    pending=null;tab='ativ';msg('Planilha atualizada.');render();
+  }catch(e){msg('Erro: '+(e.message||e.code))}
+}
+async function marcar(id){
+  const r=rows.find(x=>x.id===id);if(!r||!col)return;
+  const d=!r.exec;
+  try{await col.doc(id).update({exec:d,execBy:d?user.nome:'',execDia:d?hoje():''})}catch(e){msg('Erro: '+(e.message||e.code))}
+}
+function tabela(list,done){
+  if(!list.length)return '<div class="emp">Nada por aqui.</div>';
+  const t=hoje();
+  return '<div class="wrap"><table><thead><tr><th>Nome</th><th>Exec.</th><th>Ordem</th><th>Op.</th><th>Data</th><th>Obs</th><th>Sem.</th><th>Ind.</th><th>TAM</th><th>Loc. instalação</th><th>Texto breve</th><th>Ocorrência</th>'+(done?'<th>Feita por</th><th>Dia</th>':'')+'<th></th></tr></thead><tbody>'+
+  list.map(r=>'<tr class="'+(r.data&&r.data<t?'v':r.data===t?'h':'')+'"><td>'+esc(r.nome)+'</td><td><input type="checkbox" data-id="'+esc(r.id)+'"'+(r.exec?' checked':'')+'></td><td>'+esc(r.ordem)+'</td><td>'+esc(r.op)+'</td><td>'+br(r.data)+'</td><td>'+esc(r.obs)+'</td><td>'+esc(r.semana)+'</td><td>'+esc(r.ind)+'</td><td>'+esc(r.tam)+'</td><td>'+esc(r.loc)+'</td><td class="t">'+esc(r.texto)+'</td><td class="t">'+ocCell(r)+'</td>'+(done?'<td>'+esc(r.execBy)+'</td><td>'+br(r.execDia)+'</td>':'')+'<td><button data-fe="'+esc(r.id)+'">Editar</button></td></tr>').join('')+'</tbody></table></div>';
+}
+function filtroPer(list){
+  const t=hoje();
+  return list.filter(r=>{const d=r.data||'';return per==='hoje'?d===t:per==='venc'?(d&&d<t):per==='prox'?d>t:true});
+}
+function viewTec(){
+  const mine=rows.filter(r=>ativa(r)&&r.nome===user.nome),t=hoje();
+  const cnt=p=>mine.filter(r=>!r.exec&&(p==='hoje'?r.data===t:p==='venc'?(r.data&&r.data<t):r.data>t)).length;
+  const lst=filtroPer(mine).sort((a,b)=>(a.exec-b.exec)||(a.data||'').localeCompare(b.data||''));
+  const feitas=mine.filter(r=>r.exec).length;
+  return '<div class="box"><b>'+feitas+' de '+mine.length+'</b> concluídas na sua lista</div><div class="row tabs">'+
+    [['hoje','Hoje'],['venc','Vencidas'],['prox','Próximas']].map(([k,l])=>'<button data-per="'+k+'" class="'+(per===k?'on':'')+'">'+l+' ('+cnt(k)+')</button>').join('')+'</div>'+
+    (lst.length?lst.map(r=>{const v=r.data&&r.data<t;return '<div class="cd '+(r.exec?'f ':'')+(v?'v':r.data===t?'h':'')+'"><div class="r1"><b>'+esc(r.ordem)+' · op '+esc(r.op)+'</b><span class="bd">'+(v?'Vencida desde ':r.data===t?'Hoje ':'')+br(r.data)+'</span></div><div class="bd">'+esc(r.loc)+'</div><div>'+esc(r.texto)+(r.obs?' <span class="bd">('+esc(r.obs)+')</span>':'')+'</div><button data-id="'+esc(r.id)+'" class="'+(r.exec?'':'ok')+'">'+(r.exec?'Concluída ✓ (desfazer)':'Marcar como concluída')+'</button>'+obsBlock(r)+'</div>'}).join(''):'<div class="emp">Nenhuma atividade neste filtro.</div>');
+}
+function viewAtiv(){
+  const names=[...new Set(rows.filter(ativa).map(r=>r.nome))].sort();
+  const lst=filtroPer(rows.filter(ativa)).filter(r=>!flt||r.nome===flt).sort((a,b)=>(a.data||'').localeCompare(b.data||'')||(a.nome||'').localeCompare(b.nome||''));
+  if(fm)return viewFm();
+  return '<div class="row"><button class="pri" id="nova">+ Nova atividade</button><select id="fp">'+[['hoje','Hoje'],['venc','Vencidas'],['prox','Próximas'],['todas','Todas']].map(([k,l])=>'<option value="'+k+'"'+(per===k?' selected':'')+'>'+l+'</option>').join('')+'</select><select id="fn"><option value="">Todos</option>'+names.map(n=>'<option'+(n===flt?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select></div>'+tabela(lst);
+}
+function viewPlacar(){
+  const at=rows.filter(ativa),t=hoje(),pp=placar(at).sort((a,b)=>b.f/b.t-a.f/a.t);
+  const k=[[rows.filter(r=>r.exec).length,'Concluídas (total acumulado)'],[rows.filter(r=>r.exec&&r.execDia===t).length,'Concluídas hoje'],[at.filter(r=>!r.exec).length,'Pendentes'],[at.filter(r=>!r.exec&&r.data&&r.data<t).length,'Vencidas pendentes']];
+  return '<div class="kpi">'+k.map(x=>'<div><b>'+x[0]+'</b><span>'+x[1]+'</span></div>').join('')+'</div><div class="wrap"><table><thead><tr><th>Técnico</th><th>Feitas / lista</th><th></th><th>Hoje</th><th>Vencidas</th></tr></thead><tbody>'+
+    pp.map(p=>'<tr><td>'+esc(p.n)+'</td><td>'+p.f+' / '+p.t+'</td><td><div class="pb"><i style="width:'+Math.round(100*p.f/p.t)+'%"></i></div></td><td>'+p.h+'</td><td>'+p.v+'</td></tr>').join('')+'</tbody></table></div>';
+}
+function viewConc(){
+  return tabela(rows.filter(r=>r.exec).sort((a,b)=>(b.execDia||'').localeCompare(a.execDia||'')),true);
+}
+function viewHist(){
+  if(!hist.length)return '<div class="emp">O histórico aparece depois da primeira atualização da planilha.</div>';
+  return '<div class="wrap"><table><thead><tr><th>Atualização</th><th>Arquivo</th><th>Concluídas / lista</th><th>Acumulado</th><th>Por técnico</th></tr></thead><tbody>'+
+    [...hist].sort((a,b)=>b.ts.localeCompare(a.ts)).map(h=>'<tr><td>'+new Date(h.ts).toLocaleString('pt-BR')+'</td><td>'+esc(h.arq)+'</td><td>'+h.feitas+' / '+h.total+'</td><td>'+h.acum+'</td><td class="t">'+(h.pessoas||[]).map(p=>esc(p.n.split(' ')[0])+' '+p.f+'/'+p.t).join(' · ')+'</td></tr>').join('')+'</tbody></table></div>';
+}
+function viewImp(){
+  let h='<div class="box">Envie a planilha atualizada (Excel, CSV, foto ou PDF). O app compara com a lista atual: ordens novas entram, as existentes são atualizadas mantendo o status, e as que saíram da planilha deixam as listas dos técnicos, mas continuam no histórico de concluídas. O placar anterior é guardado no histórico.<br><br><label class="btn pri">Escolher arquivo<input type="file" id="fi" multiple accept="image/*,.pdf,.xlsx,.xls,.csv" hidden></label></div>';
+  if(pending){
+    const old=new Set(rows.map(r=>r.id)),ids=new Set(pending.list.map(rid));
+    const n=pending.list.filter(r=>!old.has(rid(r))).length,s=rows.filter(r=>ativa(r)&&!ids.has(r.id)&&!r.manual).length;
+    h+='<div class="box"><b>'+pending.list.length+' ordens lidas</b><br>'+n+' novas · '+(pending.list.length-n)+' atualizadas · '+s+' saem da lista<div class="row" style="margin:10px 0 0"><button class="pri" id="ap">Aplicar atualização</button><button id="cn">Cancelar</button></div></div>';
+  }
+  return h;
+}
+const OCOR=[['','Sem ocorrência'],['nexec','Não executada'],['os','Abrir ordem de serviço'],['peca','Comprar peça de reposição']];
+const ocLabel=k=>(OCOR.find(x=>x[0]===k)||['',''])[1];
+const ocCell=r=>(r.ocor||r.nota)?'<b>'+esc(ocLabel(r.ocor)||'Obs.')+'</b>'+(r.tratada?' ✓':'')+' '+esc(r.nota)+' <span class="bd">— '+esc((r.notaPor||'').split(' ')[0])+' '+br(r.notaDia)+'</span>':'';
+function obsBlock(r){
+  if(ed&&ed.id===r.id)return '<select id="oc">'+OCOR.map(([k,l])=>'<option value="'+k+'"'+(ed.ocor===k?' selected':'')+'>'+l+'</option>').join('')+'</select>'+(ed.ocor==='os'?sapBtn('Abrir SAP para criar a ordem'):'')+'<textarea id="nt" rows="3" placeholder="Motivo da não execução, o que encontrou, peça necessária…">'+esc(ed.nota)+'</textarea><div class="row" style="margin:0"><button class="pri" id="ns" style="flex:1">Salvar observação</button><button id="nc" style="flex:1">Cancelar</button></div>';
+  const tem=r.ocor||r.nota;
+  return (tem?'<div class="bd"><b>'+esc(ocLabel(r.ocor)||'Observação')+(r.tratada?' (tratada)':'')+':</b> '+esc(r.nota)+'</div>':'')+(r.ocor==='os'?sapBtn('Abrir SAP para criar a ordem'):'')+'<button data-ed="'+esc(r.id)+'">'+(tem?'Editar observação':'Observação / ocorrência')+'</button>';
+}
+function abrirEd(id){const r=rows.find(x=>x.id===id);if(!r)return;ed={id,ocor:r.ocor||'',nota:r.nota||''};render()}
+async function salvarNota(){
+  const e=ed;if(!e||!col)return;
+  if(e.ocor&&!e.nota.trim()){msg('Descreva a observação.');return}
+  try{await col.doc(e.id).update({ocor:e.ocor,nota:e.nota.trim(),notaPor:user.nome,notaDia:hoje()});ed=null;msg('Observação salva.');render()}catch(x){msg('Erro: '+(x.code||x.message))}
+}
+async function tratar(id){
+  const r=rows.find(x=>x.id===id);if(!r||!col)return;
+  try{await col.doc(id).update({tratada:!r.tratada})}catch(x){msg('Erro: '+(x.code||x.message))}
+}
+function viewOc(){
+  const l=rows.filter(r=>r.ocor).sort((a,b)=>(a.tratada?1:0)-(b.tratada?1:0)||(b.notaDia||'').localeCompare(a.notaDia||''));
+  if(!l.length)return '<div class="emp">Nenhuma ocorrência registrada.</div>';
+  return l.map(r=>'<div class="cd'+(r.tratada?' f':'')+'"><div class="r1"><b>'+esc(ocLabel(r.ocor))+'</b><span class="bd">'+br(r.notaDia)+'</span></div><div>'+esc(r.nota)+'</div><div class="bd">'+esc(r.nome)+' · '+esc(r.ordem)+' op '+esc(r.op)+' · '+esc(r.loc)+'<br>'+esc(r.texto)+'</div>'+(r.ocor==='os'?sapBtn('Abrir SAP para criar a ordem'):'')+'<button data-tr="'+esc(r.id)+'" class="'+(r.tratada?'':'pri')+'">'+(r.tratada?'Reabrir':'Marcar como tratada')+'</button></div>').join('');
+}
+const SAP='https://s4.stout.aurora.ab-inbev.com/sap/bc/gui/sap/its/webgui?sap-keepclientsession=1';
+const sapBtn=t=>'<a class="btn pri" href="'+SAP+'" target="_blank" rel="noopener">'+t+'</a>';
+const LOCS=['Despaletizadora','Transporte Aéreo','Rinser','Datador','Enchedora','Transp. ECH-PZ','Pasteurizador','Transp. PZ-EPC','Empacotadora KHS','Empacotadora GPI','Transp. Pacotes','Paletizadora A','Paletizadora B','Envolvedora A','Envolvedora B','Transp. Paletes','Inspetor de Nível Sul','Inspetor de Nível Norte','Recravadora'];
+const CAMPOS=[['nome','Nome (técnico)'],['ordem','Ordem'],['op','Operação'],['data','Data','date'],['obs','Obs'],['semana','Semana'],['ind','Indicador'],['loc','Local de instalação'],['texto','Texto breve']];
+const OBRIG={nome:'Nome',ordem:'Ordem',op:'Operação',data:'Data',semana:'Semana',ind:'Indicador',loc:'Local de instalação',texto:'Texto breve'};
+const errDb=e=>({'permission-denied':'sem permissão para gravar (confira se entrou como administrador e se as regras do banco estão publicadas)','unauthenticated':'sessão expirada, entre novamente','unavailable':'sem conexão com o banco de dados, tente de novo','resource-exhausted':'limite de uso do banco atingido'}[e&&e.code]||('erro inesperado ('+((e&&(e.code||e.message))||e)+')'));
+function campo(k,l,t,novo){
+  const bad=fm.bad&&fm.bad.includes(k)?'bad':'',v=fm[k]||'';
+  let h='<label class="bd">'+l+((fm.id?['nome','ordem','op','data']:Object.keys(OBRIG)).includes(k)?' *':'')+'</label>';
+  if(k==='nome'){
+    const ns=[...new Set(rows.map(r=>r.nome).filter(Boolean))].sort();
+    h+='<select data-f="nome" class="'+bad+'"><option value="">Selecione o nome…</option>'+ns.map(n=>'<option'+(n===v?' selected':'')+'>'+esc(n)+'</option>').join('')+'<option value="__novo__"'+(v==='__novo__'?' selected':'')+'>Outro (digitar novo nome)</option></select>';
+    if(v==='__novo__')h+='<input data-f="nomeNovo" class="'+bad+'" placeholder="NOME COMPLETO" value="'+esc(fm.nomeNovo||'')+'">';
+    return h;
+  }
+  if(k==='loc'){
+    const o=(!v||LOCS.includes(v))?LOCS:[v,...LOCS];
+    return h+'<select data-f="loc" class="'+bad+'"><option value="">Selecione o local…</option>'+o.map(x=>'<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>').join('')+'</select>';
+  }
+  return h+'<input data-f="'+k+'" class="'+bad+'" type="'+(t||'text')+'" value="'+esc(v)+'"'+(!novo&&(k==='ordem'||k==='op')?' disabled':'')+'>';
+}
+function viewFm(){
+  const novo=!fm.id;
+  return '<div class="box fm"><b>'+(novo?'Nova atividade':'Editar atividade')+'</b>'+
+    (fm.err&&fm.err.length?'<div class="ferr"><b>Não foi possível salvar. Corrija:</b><ul>'+fm.err.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'+(fm.semOrdem?'<div style="margin-top:8px">'+sapBtn('Abrir SAP para criar a ordem')+'</div>':'')+'</div>':'')+
+    CAMPOS.map(([k,l,t])=>campo(k,l,t,novo)).join('')+
+    '<div class="row" style="margin:12px 0 0"><button class="pri" id="fs" style="flex:1">Salvar</button><button id="fc" style="flex:1">Cancelar</button>'+(novo?'':'<button id="fx" class="dng">Excluir</button>')+'</div></div>';
+}
+function editarFm(id){
+  const r=rows.find(x=>x.id===id);if(!r)return;
+  fm={id};CAMPOS.forEach(([k])=>fm[k]=r[k]||'');tab='ativ';render();scrollTo(0,0);
+}
+async function salvarFm(){
+  const f=fm;if(!f)return;
+  const err=[],bad=[],d={};
+  CAMPOS.forEach(([k])=>d[k]=String(f[k]||'').trim());
+  if(d.nome==='__novo__')d.nome=String(f.nomeNovo||'').trim();
+  d.nome=d.nome.toUpperCase();d.semana=d.semana.toUpperCase();
+  for(const k of (f.id?['nome','ordem','op','data']:Object.keys(OBRIG)))if(!d[k]){err.push('Campo obrigatório vazio: '+OBRIG[k]+'.');bad.push(k)}
+  if(d.ordem&&!/^\d+$/.test(d.ordem)){err.push('Ordem deve conter apenas números (ex.: 100003985169).');bad.push('ordem')}
+  if(d.op&&!/^\d+$/.test(d.op)){err.push('Operação deve conter apenas números (ex.: 10).');bad.push('op')}
+  if(d.semana&&!/^S\d{2}$/.test(d.semana)){err.push('Semana deve estar no formato S00, S01, S02…');bad.push('semana')}
+  const id=f.id||(d.ordem+'_'+(d.op||'0')),orig=rows.find(r=>r.id===id);
+  if(!f.id&&orig&&d.ordem&&d.op){err.push('A ordem '+d.ordem+' operação '+d.op+' já existe (técnico '+orig.nome+'). Use Editar na atividade existente ou mude a operação.');bad.push('ordem','op')}
+  if(!col)err.push('Banco de dados indisponível. Recarregue a página e entre novamente.');
+  f.semOrdem=!d.ordem;if(err.length){f.err=err;f.bad=bad;render();scrollTo(0,0);return}
+  try{
+    if(f.id){if(orig&&orig.data!==d.data)d.dataMan=true;await col.doc(id).update(d)}
+    else await col.doc(id).set({...d,exec:false,execBy:'',execDia:'',ocor:'',nota:'',notaPor:'',notaDia:'',tratada:false,ativa:true,manual:true});
+    fm=null;msg('Atividade salva.');render();
+  }catch(e){f.err=['Falha ao gravar no banco: '+errDb(e)];f.bad=[];render();scrollTo(0,0)}
+}
+let fxArm=false;
+async function excluirFm(b){
+  if(!fxArm){fxArm=true;b.textContent='Confirmar exclusão';setTimeout(()=>{fxArm=false;if(b.isConnected)b.textContent='Excluir'},4000);return}
+  fxArm=false;
+  try{await col.doc(fm.id).delete();fm=null;msg('Atividade excluída.');render()}catch(e){msg('Erro: '+(e.code||e.message))}
+}
+const TABS=[['ativ','Atividades'],['plac','Placar'],['conc','Concluídas'],['oc','Ocorrências'],['hist','Histórico'],['imp','Importar']];
+function render(){
+  if(!user){ed=null;
+    const names=[...new Set(rows.filter(ativa).map(r=>r.nome).filter(Boolean))].sort();
+    $('#lu').innerHTML=[ADMN,...names].map(n=>'<option>'+esc(n)+'</option>').join('');
+    $('#login').hidden=false;$('#app').hidden=true;return;
+  }
+  $('#login').hidden=true;$('#app').hidden=false;
+  const adm=user.adm;
+  $('#sub').textContent=(adm?ADMN:user.nome)+' · '+br(hoje());
+  $('#tabs').innerHTML=adm?TABS.map(([k,l])=>'<button data-tab="'+k+'" class="'+(tab===k?'on':'')+'">'+l+(k==='oc'?' ('+rows.filter(r=>r.ocor&&!r.tratada).length+')':'')+'</button>').join(''):'';
+  $('#main').innerHTML=!ready?'<div class="emp">Carregando…</div>':!adm?viewTec():{ativ:viewAtiv,plac:viewPlacar,conc:viewConc,hist:viewHist,oc:viewOc,imp:viewImp}[tab]();
+  const fi=$('#fi');if(fi)fi.onchange=e=>{importar([...e.target.files]);e.target.value=''};
+  if($('#ap')){$('#ap').onclick=aplicar;$('#cn').onclick=()=>{pending=null;render()}}
+  if($('#fp'))$('#fp').onchange=e=>{per=e.target.value;render()};
+  if($('#fn'))$('#fn').onchange=e=>{flt=e.target.value;render()};
+}
+function entrar(){
+  const n=$('#lu').value,p=$('#lp').value;
+  if(n===ADMN&&p===ADM)user={adm:true,nome:ADMN};
+  else if(n!==ADMN&&p===SENHA)user={adm:false,nome:n};
+  else{$('#lerr').textContent='Senha incorreta.';return}
+  try{localStorage.setItem('ordens_user',JSON.stringify(user))}catch(e){}
+  $('#lp').value='';$('#lerr').textContent='';per='hoje';render();
+}
+$('#le').onclick=entrar;$('#lp').onkeydown=e=>{if(e.key==='Enter')entrar()};
+$('#sair').onclick=()=>{user=null;try{localStorage.removeItem('ordens_user')}catch(e){}render()};
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b||!user)return;
+  if(b.dataset.tab){tab=b.dataset.tab;render()}
+  else if(b.dataset.per){per=b.dataset.per;render()}
+  else if(b.dataset.id)marcar(b.dataset.id);
+  else if(b.dataset.ed)abrirEd(b.dataset.ed);
+  else if(b.dataset.tr)tratar(b.dataset.tr);
+  else if(b.id==='ns')salvarNota();
+  else if(b.id==='nc'){ed=null;render()}
+  else if(b.id==='nova'){fm={id:null,nome:'',ordem:'',op:'10',data:hoje(),obs:'',semana:'S00',ind:'FORA P3M',loc:'',texto:''};render()}
+  else if(b.dataset.fe)editarFm(b.dataset.fe);
+  else if(b.id==='fs')salvarFm();
+  else if(b.id==='fc'){fm=null;render()}
+  else if(b.id==='fx')excluirFm(b);
+});
+document.addEventListener('input',e=>{if(fm&&e.target.dataset.f)fm[e.target.dataset.f]=e.target.value;if(fm&&e.target.dataset.f==='nome')render();if(!ed)return;if(e.target.id==='nt')ed.nota=e.target.value;if(e.target.id==='oc'){ed.ocor=e.target.value;render()}});
+document.addEventListener('change',e=>{if(e.target.type==='checkbox'&&e.target.dataset.id)marcar(e.target.dataset.id)});
+try{const u=JSON.parse(localStorage.getItem('ordens_user')||'null');if(u&&u.nome)user=u}catch(e){}
+render();
+(async()=>{
+  const db=await claude.use('db');
+  if(!db){ready=true;render();msg('Banco de dados indisponível. Abra pelo claude.ai logado.');return}
+  col=db.collection('ordens');hcol=db.collection('historico');
+  col.onSnapshot(s=>{rows=s.docs.map(d=>({id:d.id,...d.data()}));ready=true;rr()},e=>msg('Erro no banco: '+(e.message||e.code)));
+  hcol.onSnapshot(s=>{hist=s.docs.map(d=>d.data());if(user&&user.adm&&tab==='hist')render()});
+})();
+</script>
+</body>
+</html>
