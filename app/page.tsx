@@ -14,8 +14,8 @@ export default function Home() {
   const [user,setUser] = useState<Profile|null>(null);
   const [orders,setOrders] = useState<Order[]>([]);
   const [setupRequired,setSetupRequired] = useState(false);
-  const [setupName,setSetupName] = useState("Anderson Motta");
-  const [setupEmail,setSetupEmail] = useState("Anderson.motta95@yahoo.com.br");
+  const [setupName,setSetupName] = useState("");
+  const [setupEmail,setSetupEmail] = useState("");
   const [setupPassword,setSetupPassword] = useState("");
   const [setupSecret,setSetupSecret] = useState("");
   const [login,setLogin] = useState("");
@@ -57,7 +57,7 @@ export default function Home() {
       const created = await authClient.signUp.email({ email: setupEmail.trim().toLowerCase(), password: setupPassword, name: setupName.trim() });
       if (created.error) {
         const existingSignIn = await authClient.signIn.email({ email: setupEmail.trim().toLowerCase(), password: setupPassword });
-        if (existingSignIn.error) throw new Error(created.error.message || "Não foi possível criar a conta inicial.");
+        if (existingSignIn.error) throw new Error("Já existe uma conta com este e-mail, mas a senha não confere. Use a mesma senha do primeiro cadastro.");
       } else {
         const signedIn = await authClient.signIn.email({ email: setupEmail.trim().toLowerCase(), password: setupPassword });
         if (signedIn.error) throw new Error(signedIn.error.message || "Conta criada, mas não foi possível iniciar a sessão. Tente entrar com o login gerado.");
@@ -72,8 +72,13 @@ export default function Home() {
     e.preventDefault(); setError(""); setBusy(true);
     try {
       const username = login.trim().toLowerCase();
-      const result = await authClient.signIn.email({ email: username.includes("@") ? username : loginEmail(username), password });
-      if (result.error) throw new Error(result.error.message || "Login ou senha inválidos.");
+      let result = await authClient.signIn.email({ email: username.includes("@") ? username : loginEmail(username), password });
+      // Contas internas usam e-mail sintético; se digitou um e-mail real, tenta o login gerado pelo nome.
+      if (result.error && username.includes("@") && !username.endsWith("@login.gera.invalid")) {
+        const local = username.split("@")[0].replace(/\d+$/, "");
+        if (local.includes(".")) result = await authClient.signIn.email({ email: loginEmail(local), password });
+      }
+      if (result.error) throw new Error(username.includes("@") ? "Login ou senha inválidos. Use o login no formato nome.sobrenome." : "Login ou senha inválidos.");
       setPassword(""); await load(true);
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível entrar."); }
     finally { setBusy(false); }
@@ -170,8 +175,8 @@ export default function Home() {
   if(!user) return <main className="shell" style={{maxWidth:480,paddingTop:"10vh"}}>
     <header className="header"><div><div className="brand">gera<span style={{color:"var(--accent)"}}>.</span></div><div className="muted">Ordens do Dia · Gestão de atividades</div></div></header>
     <section className="panel stack">{setupRequired?<><div><h1>Configuração inicial</h1><p className="muted">Crie a conta do administrador principal. Este formulário desaparece após a configuração inicial.</p></div>
-      <form className="stack" onSubmit={bootstrap}><div><label className="label">Nome completo</label><input className="field" autoComplete="name" value={setupName} onChange={e=>setSetupName(e.target.value)} placeholder="Seu nome e sobrenome" required /></div><div><label className="label">E-mail do administrador</label><input className="field" type="email" autoComplete="email" value={setupEmail} onChange={e=>setSetupEmail(e.target.value)} required /></div><div><label className="label">Senha inicial (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={setupPassword} onChange={e=>setSetupPassword(e.target.value)} required /></div><div><label className="label">Código de configuração</label><input className="field" type="password" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Configurando…":"Criar administrador principal"}</button></form><p className="muted">Antes de abrir o sistema, configure GERA_BOOTSTRAP_SECRET na Vercel com um segredo aleatório de pelo menos 20 caracteres. Você poderá entrar usando seu e-mail ou o login gerado pelo nome.</p></>:<><div><h1>Entrar no Gera</h1><p className="muted">Use o login fornecido pelo administrador.</p></div>
-      <form className="stack" onSubmit={signIn}><div><label className="label">Login</label><input className="field" autoComplete="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="anderson.motta95@yahoo.com.br ou anderson.motta" required /></div><div><label className="label">Senha</label><input className="field" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Entrando…":"Entrar"}</button></form><p className="muted">O acesso é criado por um administrador. Não há cadastro público.</p></>}</section>
+      <form className="stack" onSubmit={bootstrap}><div><label className="label">Nome completo</label><input className="field" autoComplete="name" value={setupName} onChange={e=>setSetupName(e.target.value)} placeholder="Seu nome e sobrenome" required /></div><div><label className="label">E-mail do administrador</label><input className="field" type="email" autoComplete="email" value={setupEmail} onChange={e=>setSetupEmail(e.target.value)} required /></div><div><label className="label">Senha inicial (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={setupPassword} onChange={e=>setSetupPassword(e.target.value)} required /></div><div><label className="label">Código de configuração</label><input className="field" type="password" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Configurando…":"Criar administrador principal"}</button></form><p className="muted">Antes de abrir o sistema, configure GERA_BOOTSTRAP_SECRET na Vercel com um segredo aleatório de pelo menos 20 caracteres. Você poderá entrar usando seu e-mail ou o login gerado pelo nome.</p></>:<><div><h1>Entrar no Gera</h1><p className="muted">Use o login no formato <b>nome.sobrenome</b> (ex.: anderson.motta), não o seu e-mail pessoal.</p></div>
+      <form className="stack" onSubmit={signIn}><div><label className="label">Login</label><input className="field" autoComplete="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="nome.sobrenome" required /></div><div><label className="label">Senha</label><input className="field" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Entrando…":"Entrar"}</button></form><p className="muted">O acesso é criado por um administrador. Não há cadastro público.</p></>}</section>
     {error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}
 </main>;
   if(user.must_change_password) return <main className="shell" style={{maxWidth:520,paddingTop:"8vh"}}><section className="panel stack"><div className="brand">Primeiro acesso</div><h1>Crie sua senha pessoal</h1><p className="muted">Por segurança, você precisa substituir a senha provisória antes de acessar suas atividades.</p><form className="stack" onSubmit={changePassword}><div><label className="label">Senha provisória atual</label><input className="field" type="password" autoComplete="current-password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} required /></div><div><label className="label">Nova senha (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNewPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Salvando…":"Salvar nova senha"}</button></form>{error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}</section></main>;

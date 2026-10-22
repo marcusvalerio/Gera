@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db";
@@ -8,7 +9,7 @@ export async function POST(request: Request) {
     const expected = process.env.GERA_BOOTSTRAP_SECRET;
     if (!expected) return NextResponse.json({ error: "A configuração inicial ainda não foi habilitada pelo deploy." }, { status: 503 });
     const body = await request.json() as { secret?: string; name?: string };
-    if (!body.secret || body.secret.length < 20 || body.secret !== expected) return NextResponse.json({ error: "Código de configuração inválido." }, { status: 403 });
+    if (!body.secret || body.secret.length < 20 || body.secret.length !== expected.length || !timingSafeEqual(Buffer.from(body.secret), Buffer.from(expected))) return NextResponse.json({ error: "Código de configuração inválido." }, { status: 403 });
     const { data: session } = await auth.getSession();
     if (!session?.user) return NextResponse.json({ error: "Entre com a conta recém-criada antes de concluir a configuração." }, { status: 401 });
     const sql = db();
