@@ -19,6 +19,22 @@ function pick(row: Record<string, unknown>, aliases: string[]) {
   for (const alias of aliases) { const value = values.get(normalizedKey(alias)); if (value !== undefined && clean(value)) return clean(value); }
   return "";
 }
+function pickRaw(row: Record<string, unknown>, aliases: string[]) {
+  const values = new Map(Object.entries(row).map(([k,v]) => [normalizedKey(k), v]));
+  for (const alias of aliases) { const value = values.get(normalizedKey(alias)); if (value !== undefined && clean(value)) return value; }
+  return null;
+}
+// Datas da planilha são brasileiras (dd/mm/aaaa); nunca interpretar como mm/dd.
+function parseDate(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value.getTime() + 12 * 3600e3).toISOString().slice(0, 10);
+  if (typeof value === "number") { const d = XLSX.SSF.parse_date_code(value); return d ? `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}` : null; }
+  const text = String(value).trim();
+  let m = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+  if (m) { const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); const mo = Number(m[2]), d = Number(m[1]); if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`; return null; }
+  m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
 function parseRows(buffer: Buffer): ImportRow[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const first = workbook.SheetNames[0];
@@ -34,10 +50,8 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const technician = pick(r, ["nome", "técnico", "tecnico", "responsável", "responsavel", "executor"]);
     const priorityRaw = pick(r, ["prioridade", "criticidade"]).toLowerCase();
     const priority: ImportRow["priority"] = /crit|urgente/.test(priorityRaw) ? "critical" : /alta|high/.test(priorityRaw) ? "high" : /baixa|low/.test(priorityRaw) ? "low" : "normal";
-    const dateRaw = pick(r, ["data", "data prevista", "prazo", "scheduled for"]);
-    const date = dateRaw ? new Date(dateRaw) : null;
-    const scheduled_for = date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0,10) : null;
-    const workRaw = pick(r, ["trabalho", "tempo de trabalho", "tempo", "minutos", "work minutes"]);
+    const scheduled_for = parseDate(pickRaw(r, ["data", "data prevista", "prazo", "scheduled for"]));
+    const workRaw = pick(r, ["trabalho", "trabalh", "trab", "tempo de trabalho", "tempo", "minutos", "work minutes"]);
     const workMinutes = workRaw ? Number(workRaw.replace(",", ".")) : 0;
     if (!Number.isFinite(workMinutes) || workMinutes < 0) throw new Error(`Linha ${index + 2}: Trabalho deve ser informado em minutos válidos.`);
     const stable = order || [title, equipment, location].filter(Boolean).join("|");

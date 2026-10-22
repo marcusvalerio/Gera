@@ -12,6 +12,10 @@ type Order = { id:string; order_number:string|null; title:string; description:st
 type SheetPerson = { username:string; sheet_name:string|null; total:number; completed:number; registered:boolean; suggestedName:string };
 type AppUser = { username:string; display_name:string; role:string; is_active:boolean; must_change_password:boolean };
 type PersonReport = { username:string; profile:AppUser|null; summary:{total:number;completed:number;pending:number;in_progress:number;overdue:number;minutes:number}; orders:Array<{id:string;order_number:string|null;title:string;location:string|null;status:string;scheduled_for:string|null;work_minutes:number;completed_at:string|null;sheet_name:string|null}>; occurrences:Array<{category:string;description:string;status:string;created_at:string;order_number:string|null}> };
+type WeekData = { start:string; days:string[]; people:Array<{username:string;name:string|null}>; orders:Array<{id:string;order_number:string|null;title:string;location:string|null;status:string;assigned_username:string|null;day:string;work_minutes:number}> };
+const todayIso = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+const shiftDay = (iso:string|undefined, days:number) => { const d = new Date((iso ?? todayIso()) + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0,10); };
+const allocClass = (m:number) => m === 0 ? "alloc-nok" : m < 360 ? "alloc-low" : m > 480 ? "alloc-high" : "alloc-ok";
 type Summary = { total:number; new:number; changed:number; unchanged:number; existing:number; notInFile:number; completedPreserved:number; preview:Array<Record<string,unknown>> };
 type Allocation = { periodDays:number; daily:Array<{day:string;minutes:number;orders:number}>; people:Array<{name:string;minutes:number;orders:number}>; totals:{minutes:number;orders:number;days:number} };
 type Analytics = { periodDays:number; summary:Record<string,number>; byStatus:Array<{status:string;count:number}>; byPriority:Array<{priority:string;count:number}>; trend:Array<{day:string;created:number;completed:number}>; byTechnician:Array<{username:string;total:number;completed:number;pending:number;overdue:number}>; occurrences:Array<{category:string;status:string;count:number}>; imports:Array<Record<string,unknown>>; recentOrders:Array<Record<string,unknown>> };
@@ -38,6 +42,9 @@ export default function Home() {
   const [busy,setBusy] = useState(false);
   const [tab,setTab] = useState<"dashboard"|"placar"|"allocation"|"orders"|"import"|"users"|"security"|"person">("dashboard");
   const [menuOpen,setMenuOpen] = useState(false);
+  const [week,setWeek] = useState<WeekData|null>(null);
+  const [cell,setCell] = useState<{username:string;day:string}|null>(null);
+  const [newAct,setNewAct] = useState({username:"",day:"",minutes:"60",title:"",orderNumber:"",location:""});
   const [people,setPeople] = useState<{people:SheetPerson[];users:AppUser[]}|null>(null);
   const [report,setReport] = useState<PersonReport|null>(null);
   const [analytics,setAnalytics] = useState<Analytics|null>(null);
@@ -168,6 +175,28 @@ export default function Home() {
     if (!res.ok) { setError(data.error || "Falha ao registrar ocorrência."); return; }
     setMessage("Ocorrência registrada."); 
   }
+  async function loadWeek(start?:string) {
+    const res = await fetch(`/api/admin/allocation/week${start?`?start=${start}`:""}`); const data = await res.json();
+    if (!res.ok) { setError((data.error || "Falha ao carregar a alocação.") + (data.detail ? ` (${data.detail})` : "")); return; }
+    setWeek(data); setCell(null);
+  }
+  function weekMinutes(username:string, day:string) { return (week?.orders ?? []).filter(o=>o.assigned_username===username&&o.day===day).reduce((sum,o)=>sum+Number(o.work_minutes||0),0); }
+  async function moveOrder(id:string, day:string) {
+    setError(""); setMessage("");
+    const res = await fetch("/api/admin/allocation/week",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id,day})});
+    const data = await res.json(); if (!res.ok) { setError(data.error || "Falha ao mudar a data."); return; }
+    setMessage(`Atividade movida para ${new Date(day+"T12:00:00").toLocaleDateString("pt-BR")}.`); const keep = cell; await loadWeek(week?.start); setCell(keep);
+  }
+  async function createActivity(e:React.FormEvent) {
+    e.preventDefault(); setError(""); setMessage(""); setBusy(true);
+    try {
+      const res = await fetch("/api/admin/allocation/week",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...newAct,minutes:Number(newAct.minutes)})});
+      const data = await res.json(); if (!res.ok) throw new Error(data.error || "Falha ao criar a atividade.");
+      setMessage("Atividade criada."); const keep = {username:newAct.username,day:newAct.day}; setNewAct(a=>({...a,title:"",orderNumber:"",location:""}));
+      await loadWeek(shiftDay(newAct.day,0)); setCell(keep);
+    } catch (e) { setError(e instanceof Error ? e.message : "Falha ao criar a atividade."); }
+    finally { setBusy(false); }
+  }
   async function loadPeople() {
     const res = await fetch("/api/admin/people"); const data = await res.json();
     if (!res.ok) { setError(data.error || "Falha ao carregar pessoas."); return; }
@@ -220,7 +249,7 @@ export default function Home() {
 
   const admin = user.role!=="technician";
   const current = admin ? tab : (tab==="security"?"security":"orders");
-  const go = (t:typeof tab) => { setTab(t); setMenuOpen(false); setError(""); setMessage(""); if(t==="dashboard"||t==="placar") void loadAnalytics(); if(t==="allocation") void loadAllocation(); if(t==="users") void loadPeople(); };
+  const go = (t:typeof tab) => { setTab(t); setMenuOpen(false); setError(""); setMessage(""); if(t==="dashboard"||t==="placar") void loadAnalytics(); if(t==="allocation") void loadWeek(week?.start); if(t==="users") void loadPeople(); };
   const navItems = (NAV as Array<[typeof tab,string,boolean]>).filter(([, ,adminOnly])=>admin||!adminOnly);
   return <div className="app">
     <div className="topbar"><div className="brand">gera<span style={{color:"var(--accent)"}}>.</span></div><button className="menu-btn" aria-label="Abrir menu" onClick={()=>setMenuOpen(true)}><span/><span/><span/></button></div>
@@ -239,8 +268,26 @@ export default function Home() {
       {!analytics?<div className="panel">Carregando placar…</div>:<><div className="grid"><div className="panel kpi"><span className="muted">Ordens registradas</span><strong className="stats">{analytics.summary.total??0}</strong></div><div className="panel kpi"><span className="muted">Concluídas</span><strong className="stats">{analytics.summary.completed??0}</strong></div><div className="panel kpi"><span className="muted">Taxa de conclusão</span><strong className="stats">{analytics.summary.completionRate??0}%</strong></div></div><div className="panel stack"><h2>Ranking por colaborador</h2>{analytics.byTechnician.length===0?<p className="muted">Ainda não há colaboradores atribuídos nas ordens.</p>:<div className="table-wrap"><table><thead><tr><th>Posição</th><th>Colaborador</th><th>Ordens</th><th>Concluídas</th><th>Pendentes</th><th>Atrasadas</th></tr></thead><tbody>{analytics.byTechnician.map((t,i)=><tr key={t.username}><td>{i+1}º</td><td>{t.username}</td><td>{t.total}</td><td>{t.completed}</td><td>{t.pending}</td><td>{t.overdue}</td></tr>)}</tbody></table></div>}</div></>}
     </section>}
     {admin&&current==="allocation"&&<section className="stack">
-      <div className="spread dashboard-heading"><div><h1>Alocação de trabalho</h1><p className="muted">Tempo previsto por dia, calculado a partir da coluna Trabalho em minutos.</p></div><div className="row"><select className="field period-select" aria-label="Período da alocação" value={periodDays} onChange={e=>{const d=Number(e.target.value);setPeriodDays(d);void loadAllocation(d);}}><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option></select><button className="btn ghost" onClick={()=>void loadAllocation()}>Atualizar</button></div></div>
-      {!allocation?<div className="panel">Carregando alocação…</div>:<><div className="grid"><div className="panel kpi"><span className="muted">Tempo total cadastrado</span><strong className="stats">{formatMinutes(allocation.totals.minutes)}</strong><span className="kpi-note">{allocation.totals.orders} ordens</span></div><div className="panel kpi"><span className="muted">Dias com atividade</span><strong className="stats">{allocation.totals.days}</strong></div><div className="panel kpi"><span className="muted">Carga média por ordem</span><strong className="stats">{formatMinutes(allocation.totals.orders?Math.round(allocation.totals.minutes/allocation.totals.orders):0)}</strong></div></div><div className="panel stack"><h2>Tempo por dia</h2>{allocation.daily.length===0?<p className="muted">Não há tempos de trabalho importados para o período.</p>:<div className="table-wrap"><table><thead><tr><th>Data</th><th>Ordens</th><th>Tempo total</th></tr></thead><tbody>{allocation.daily.map((d)=><tr key={d.day}><td>{d.day==="Sem data"?d.day:new Date(d.day+"T12:00:00").toLocaleDateString("pt-BR")}</td><td>{d.orders}</td><td>{formatMinutes(d.minutes)}</td></tr>)}</tbody></table></div>}</div><div className="panel stack"><h2>Distribuição por colaborador</h2>{allocation.people.length===0?<p className="muted">Nenhum colaborador encontrado.</p>:<div className="table-wrap"><table><thead><tr><th>Colaborador</th><th>Ordens</th><th>Tempo alocado</th></tr></thead><tbody>{allocation.people.map(p=><tr key={p.name}><td>{p.name}</td><td>{p.orders}</td><td>{formatMinutes(p.minutes)}</td></tr>)}</tbody></table></div>}</div></>}
+      <div className="spread dashboard-heading"><div><h1>Alocação semanal</h1><p className="muted">Minutos de trabalho previstos por pessoa e por dia. Clique numa célula para ver, mover ou criar atividades.</p></div>
+        <div className="row"><button className="btn ghost" onClick={()=>void loadWeek(shiftDay(week?.start,-7))}>‹ Semana anterior</button><input className="field date-field" type="date" value={week?.start??""} onChange={e=>e.target.value&&void loadWeek(e.target.value)} aria-label="Escolher semana"/><button className="btn ghost" onClick={()=>void loadWeek(shiftDay(week?.start,7))}>Próxima semana ›</button><button className="btn ghost" onClick={()=>void loadWeek()}>Hoje</button></div></div>
+      {!week?<div className="panel">Carregando alocação…</div>:<>
+      <div className="panel alloc-panel">
+        <div className="table-wrap"><table className="alloc"><thead><tr><th className="alloc-name">Nome</th>{week.days.map(d=>{const dt=new Date(d+"T12:00:00");return <th key={d} className={"alloc-day"+(d===todayIso()?" today":"")}><span>{dt.toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","").toUpperCase()}</span><small>{dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}).replace(". de ","-").replace(" de ","-").replace(".","")}</small></th>;})}<th className="num">Total</th></tr></thead>
+          <tbody>{week.people.map(p=>{const totals=week.days.map(d=>weekMinutes(p.username,d));return <tr key={p.username}><td className="alloc-name"><button className="link" onClick={()=>void openPerson(p.username)}>{p.name||p.username}</button></td>{week.days.map((d,k)=>{const m=totals[k];const sel=cell?.username===p.username&&cell.day===d;return <td key={d} className={"alloc-cell "+allocClass(m)+(sel?" selected":"")} onClick={()=>{setCell({username:p.username,day:d});setNewAct(a=>({...a,username:p.username,day:d}));}}>{m}</td>;})}<td className="num"><strong>{formatMinutes(totals.reduce((a,b)=>a+b,0))}</strong></td></tr>;})}</tbody></table></div>
+        <div className="legend alloc-legend"><span><i className="alloc-ok"/>ALC OK (360–480 min)</span><span><i className="alloc-low"/>ALC &lt; 360 min</span><span><i className="alloc-high"/>ALC &gt; 480 min</span><span><i className="alloc-nok"/>ALC NOK (sem alocação)</span></div>
+      </div>
+      <div className="split">
+        <div className="panel stack"><h2>{cell?`${week.people.find(p=>p.username===cell.username)?.name||cell.username} · ${new Date(cell.day+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"})}`:"Atividades do dia"}</h2>
+          {!cell?<p className="muted">Selecione uma célula da grade.</p>:(()=>{const list=week.orders.filter(o=>o.assigned_username===cell.username&&o.day===cell.day);return list.length===0?<p className="muted">Nenhuma atividade alocada neste dia.</p>:<ul className="plain-list">{list.map(o=><li key={o.id} className="alloc-order"><div><strong>{o.order_number||"Sem número"}</strong> · {o.title}<div className="muted">{formatMinutes(o.work_minutes)}{o.location?` · ${o.location}`:""} · {STATUS_LABEL[o.status]||o.status}</div></div>{o.status==="completed"?<span className="locked">Concluída</span>:<label className="move">Mudar data<input className="field" type="date" defaultValue={o.day} onChange={e=>e.target.value&&e.target.value!==o.day&&void moveOrder(o.id,e.target.value)}/></label>}</li>)}</ul>;})()}
+        </div>
+        <form className="panel stack" onSubmit={createActivity}><h2>Nova atividade</h2>
+          <div><label className="label">Responsável</label><select className="field" value={newAct.username} onChange={e=>setNewAct({...newAct,username:e.target.value})} required><option value="">Selecione…</option>{week.people.map(p=><option key={p.username} value={p.username}>{p.name||p.username}</option>)}</select></div>
+          <div className="row two"><div><label className="label">Data</label><input className="field" type="date" value={newAct.day} onChange={e=>setNewAct({...newAct,day:e.target.value})} required/></div><div><label className="label">Tempo (min)</label><input className="field" type="number" min={1} max={1440} value={newAct.minutes} onChange={e=>setNewAct({...newAct,minutes:e.target.value})} required/></div></div>
+          <div><label className="label">Descrição</label><input className="field" value={newAct.title} onChange={e=>setNewAct({...newAct,title:e.target.value})} placeholder="Ex.: Inspeção da enchedora 01" required/></div>
+          <div className="row two"><div><label className="label">Nº da ordem (opcional)</label><input className="field" value={newAct.orderNumber} onChange={e=>setNewAct({...newAct,orderNumber:e.target.value})}/></div><div><label className="label">Local (opcional)</label><input className="field" value={newAct.location} onChange={e=>setNewAct({...newAct,location:e.target.value})}/></div></div>
+          <button className="btn" disabled={busy}>{busy?"Salvando…":"Criar atividade"}</button>
+        </form>
+      </div></>}
     </section>}
     {admin&&current==="dashboard"&&<section className="stack">
       <div className="spread dashboard-heading"><div><h1>Visão gerencial</h1><p className="muted">Indicadores operacionais baseados nos dados do Gera.</p></div><div className="row"><select className="field period-select" aria-label="Período do relatório" value={periodDays} onChange={e=>{const d=Number(e.target.value);setPeriodDays(d);void loadAnalytics(d);}}><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option></select><button className="btn ghost" onClick={()=>void loadAnalytics()}>Atualizar</button><button className="btn secondary" disabled={!analytics} onClick={exportAnalyticsCsv}>Exportar CSV</button></div></div>
