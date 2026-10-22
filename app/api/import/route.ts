@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       existing: rows.filter(r => actions.get(r.external_key) !== "new").length,
       notInFile: Number(absent[0]?.count ?? 0),
       completedPreserved: rows.filter(r => String(existingMap.get(r.external_key)?.status ?? "") === "completed").length,
-      preview: rows.slice(0, 100).map(r => ({ order: r.order_number, title: r.title, equipment: r.equipment, location: r.location, assigned: r.assigned_username, priority: r.priority, scheduled_for: r.scheduled_for, work_minutes: r.work_minutes, name: r.source_data.__gera.name, indicator: r.source_data.__gera.indicator, week: r.source_data.__gera.week, action: actions.get(r.external_key) })),
+      preview: rows.slice(0, 100).map(r => ({ order: r.order_number, title: r.title, equipment: r.equipment, location: r.location, assigned: r.assigned_username, priority: r.priority, scheduled_for: r.scheduled_for, work_minutes: r.work_minutes, name: (r.source_data.__gera as Record<string, unknown> | undefined)?.name, indicator: (r.source_data.__gera as Record<string, unknown> | undefined)?.indicator, week: (r.source_data.__gera as Record<string, unknown> | undefined)?.week, action: actions.get(r.external_key) })),
     };
     if (!apply) return NextResponse.json({ summary, message: "Prévia gerada. Confirme para aplicar a importação." });
     const importId = randomUUID();
