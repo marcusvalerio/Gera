@@ -125,3 +125,27 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 }
 @media print{.sidebar,.topbar,.backdrop,.btn,.link{display:none!important}.content{margin:0;padding:0}.panel{break-inside:avoid}}
 .split table{min-width:0}.split td .btn{white-space:nowrap}
+
+/* Alocação semanal */
+.date-field{width:auto}
+.alloc-panel{padding:0;overflow:hidden}
+table.alloc{min-width:820px;font-size:13px}
+table.alloc th,table.alloc td{border:1px solid var(--line);padding:7px 10px}
+table.alloc thead th{text-align:center;background:#f8f9fb}
+.alloc-day span{display:block}.alloc-day small{display:block;font-weight:500;text-transform:none;letter-spacing:0;color:var(--text)}
+.alloc-day.today{background:var(--accent-soft)!important;color:var(--accent)}
+th.alloc-name,td.alloc-name{text-align:left!important;min-width:240px;white-space:nowrap}
+td.alloc-name .link{color:var(--text);font-weight:500;font-size:12px}
+.alloc-cell{text-align:center;cursor:pointer;font-variant-numeric:tabular-nums;font-weight:500}
+.alloc-cell:hover{outline:2px solid var(--accent);outline-offset:-2px}
+.alloc-cell.selected{outline:2px solid var(--text);outline-offset:-2px}
+.alloc-nok{background:#fbd5d8;color:#9b1c1c}
+.alloc-low{background:#bcd4f2;color:#123d73}
+.alloc-ok{background:#bfe3c2;color:#14532d}
+.alloc-high{background:#fbeba0;color:#6b4e00}
+.alloc-legend{padding:12px 16px;border-top:1px solid var(--line)}
+.alloc-legend i{display:inline-block;width:14px;height:14px;border-radius:3px}
+.alloc-order{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.move{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:4px}
+.move .field{width:auto;padding:6px 8px}
+.row.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
