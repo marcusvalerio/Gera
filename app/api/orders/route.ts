@@ -22,8 +22,9 @@ export async function PATCH(request: Request) {
     if (!body.id || !body.status) return NextResponse.json({ error: "Informe a ordem e o novo status." }, { status: 400 });
     const allowed = ["pending", "in_progress", "completed", "blocked"];
     if (!allowed.includes(body.status)) return NextResponse.json({ error: "Status inválido." }, { status: 400 });
-    const found = await db()`SELECT id, assigned_username FROM work_orders WHERE id = ${body.id} LIMIT 1`;
+    const found = await db()`SELECT id, assigned_username, status FROM work_orders WHERE id = ${body.id} LIMIT 1`;
     if (!found.length) return NextResponse.json({ error: "Ordem não encontrada." }, { status: 404 });
+    if (found[0].status === "completed") return NextResponse.json({ error: "Atividade já concluída. Não pode mais ser alterada." }, { status: 409 });
     if (user.role === "technician" && found[0].assigned_username !== user.username) return NextResponse.json({ error: "Esta ordem não está atribuída a você." }, { status: 403 });
     const rows = await db()`UPDATE work_orders SET status = ${body.status}, completed_at = CASE WHEN ${body.status} = 'completed' THEN COALESCE(completed_at, now()) ELSE NULL END, completed_by = CASE WHEN ${body.status} = 'completed' THEN ${user.username} ELSE NULL END, updated_at = now() WHERE id = ${body.id} RETURNING id, status, completed_at`;
     await db()`INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details) VALUES (${body.id}, 'status.changed', ${user.auth_user_id}, ${JSON.stringify({ status: body.status })}::jsonb)`;

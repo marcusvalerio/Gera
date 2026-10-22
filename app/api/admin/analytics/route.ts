@@ -17,15 +17,15 @@ export async function GET(request: Request) {
         COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
         COUNT(*) FILTER (WHERE status = 'blocked')::int AS blocked,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue,
-        COUNT(*) FILTER (WHERE created_at >= now() - (${days}::text || ' days')::interval)::int AS created_in_period,
-        COUNT(*) FILTER (WHERE completed_at >= now() - (${days}::text || ' days')::interval)::int AS completed_in_period
+        COUNT(*) FILTER (WHERE created_at >= now() - make_interval(days => ${days}::int))::int AS created_in_period,
+        COUNT(*) FILTER (WHERE completed_at >= now() - make_interval(days => ${days}::int))::int AS completed_in_period
         FROM work_orders`,
       sql`SELECT status, COUNT(*)::int AS count FROM work_orders GROUP BY status ORDER BY count DESC`,
       sql`SELECT priority, COUNT(*)::int AS count FROM work_orders WHERE status NOT IN ('completed','cancelled') GROUP BY priority ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`,
       sql`SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
         COUNT(w.id) FILTER (WHERE w.created_at::date = d.day)::int AS created,
         COUNT(w.id) FILTER (WHERE w.completed_at::date = d.day)::int AS completed
-        FROM generate_series(CURRENT_DATE - ((${days} - 1) * interval '1 day'), CURRENT_DATE, interval '1 day') AS d(day)
+        FROM generate_series(CURRENT_DATE - make_interval(days => ${days}::int - 1), CURRENT_DATE, interval '1 day') AS d(day)
         LEFT JOIN work_orders w ON w.created_at::date = d.day OR w.completed_at::date = d.day
         GROUP BY d.day ORDER BY d.day`,
       sql`SELECT COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') AS username,
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
         COUNT(*) FILTER (WHERE status IN ('pending','blocked'))::int AS pending,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue
         FROM work_orders GROUP BY COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') ORDER BY completed DESC, total DESC LIMIT 20`,
-      sql`SELECT category, status, COUNT(*)::int AS count FROM occurrences WHERE created_at >= now() - (${days}::text || ' days')::interval GROUP BY category, status ORDER BY count DESC LIMIT 30`,
+      sql`SELECT category, status, COUNT(*)::int AS count FROM occurrences WHERE created_at >= now() - make_interval(days => ${days}::int) GROUP BY category, status ORDER BY count DESC LIMIT 30`,
       sql`SELECT id, filename, status, total_rows, created_count, updated_count, unchanged_count, error_count, created_at, applied_at
         FROM imports ORDER BY created_at DESC LIMIT 10`,
       sql`SELECT id, order_number, title, status, priority, assigned_username, updated_at FROM work_orders ORDER BY updated_at DESC LIMIT 8`
@@ -56,6 +56,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
-    return NextResponse.json({ error: "Falha ao gerar o dashboard gerencial." }, { status: 500 });
+    console.error("[gera] analytics:", error);
+    return NextResponse.json({ error: "Falha ao gerar o dashboard gerencial.", detail: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
