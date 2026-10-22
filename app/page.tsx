@@ -37,9 +37,9 @@ export default function Home() {
   const [analyticsBusy,setAnalyticsBusy] = useState(false);
   const [ready,setReady] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (afterLogin = false) => {
     const me = await fetch("/api/me");
-    if (!me.ok) { setUser(null); const setup = await fetch("/api/setup/status"); if (setup.ok) setSetupRequired(Boolean((await setup.json()).setupRequired)); setReady(true); return; }
+    if (!me.ok) { setUser(null); if (me.status === 401 && afterLogin) { setError("Login aceito, mas o servidor não reconheceu a sessão (cookie). Tente novamente ou avise o suporte."); } if (me.status !== 401) { const failure = await me.json().catch(() => ({})) as { error?: string; detail?: string }; setError(`${failure.error ?? "Falha ao carregar perfil."} (${me.status})${failure.detail ? " — " + failure.detail : ""}`); } const setup = await fetch("/api/setup/status"); if (setup.ok) setSetupRequired(Boolean((await setup.json()).setupRequired)); setReady(true); return; }
     const payload = await me.json();
     setUser(payload.user);
     if (!payload.user.must_change_password) {
@@ -74,7 +74,7 @@ export default function Home() {
       const username = login.trim().toLowerCase();
       const result = await authClient.signIn.email({ email: username.includes("@") ? username : loginEmail(username), password });
       if (result.error) throw new Error(result.error.message || "Login ou senha inválidos.");
-      setPassword(""); await load();
+      setPassword(""); await load(true);
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível entrar."); }
     finally { setBusy(false); }
   }

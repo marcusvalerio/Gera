@@ -6,7 +6,9 @@ export async function GET() {
     const user = await currentUser();
     if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     return NextResponse.json({ user });
-  } catch {
-    return NextResponse.json({ error: "Falha ao carregar perfil." }, { status: 500 });
+  } catch (error) {
+    console.error("[gera] /api/me falhou:", error);
+    const detail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: "Falha ao carregar perfil.", detail }, { status: 500 });
   }
 }
