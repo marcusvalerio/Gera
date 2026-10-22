@@ -127,7 +127,11 @@ export default function Home() {
   async function changePassword(e:React.FormEvent) {
     e.preventDefault(); setError(""); setMessage(""); setBusy(true);
     try {
-      const res = await fetch("/api/me/password",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({currentPassword,newPassword})});
+      if (newPassword.length < 12) throw new Error("A nova senha deve ter pelo menos 12 caracteres.");
+      // Troca a senha direto no Neon Auth (mesmo caminho do login) e depois libera o perfil no servidor.
+      const changed = await authClient.changePassword({ currentPassword, newPassword, revokeOtherSessions: true });
+      if (changed.error) throw new Error(/password/i.test(changed.error.message ?? "") ? "Senha provisória atual incorreta." : (changed.error.message || "Falha ao trocar senha."));
+      const res = await fetch("/api/me/password",{method:"POST"});
       const data = await res.json(); if(!res.ok) throw new Error(data.error || "Falha ao trocar senha.");
       setCurrentPassword("");setNewPassword("");setMessage("Senha atualizada. Seu acesso está liberado.");await load();
     } catch(e) {setError(e instanceof Error?e.message:"Falha ao trocar senha.");}
