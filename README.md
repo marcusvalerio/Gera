@@ -47,6 +47,3 @@ A importação é transacional e registra eventos e auditoria. Reimportações a
 
 O schema inicial foi provisionado no projeto Neon `gera` (região `aws-sa-east-1`) e está documentado em `migrations/0001_initial_schema.sql`. A aplicação precisa receber `DATABASE_URL` e `NEON_AUTH_BASE_URL` do projeto/branch correto antes de ser implantada.
 
-## Branch de implementação
-
-Todo o trabalho está em `feat/neon-auth-admin-import`. A branch `main` não foi alterada nem mesclada. A implantação e os testes end-to-end ainda precisam ser concluídos após configurar as variáveis de ambiente e confirmar o domínio Vercel.
