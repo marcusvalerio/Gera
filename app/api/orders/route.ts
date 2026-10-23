@@ -6,12 +6,32 @@ export async function GET() {
   try {
     const user = await requireUser();
     const rows = user.role === "technician"
-      ? await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at FROM work_orders WHERE assigned_username = ${user.username} ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`
-      : await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at FROM work_orders ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`;
+      ? await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes FROM work_orders WHERE assigned_username = ${user.username} ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`
+      : await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes FROM work_orders ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`;
     return NextResponse.json({ orders: rows });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
     return NextResponse.json({ error: "Falha ao carregar ordens." }, { status: 500 });
+  }
+}
+
+// Anotação livre da pessoa sobre a atividade.
+export async function PUT(request: Request) {
+  try {
+    const user = await requireUser();
+    const body = await request.json() as { id?: string; notes?: string };
+    const notes = String(body.notes ?? "").trim();
+    if (!body.id) return NextResponse.json({ error: "Informe a ordem." }, { status: 400 });
+    if (notes.length > 1000) return NextResponse.json({ error: "Texto muito longo (máximo de 1000 caracteres)." }, { status: 400 });
+    const found = await db()`SELECT assigned_username FROM work_orders WHERE id = ${body.id} LIMIT 1`;
+    if (!found.length) return NextResponse.json({ error: "Ordem não encontrada." }, { status: 404 });
+    if (user.role === "technician" && found[0].assigned_username !== user.username) return NextResponse.json({ error: "Esta ordem não está atribuída a você." }, { status: 403 });
+    await db()`UPDATE work_orders SET notes = ${notes || null}, updated_at = now() WHERE id = ${body.id}`;
+    await db()`INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details) VALUES (${body.id}, 'notes.changed', ${user.auth_user_id}, ${JSON.stringify({ notes })}::jsonb)`;
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
+    return NextResponse.json({ error: "Falha ao salvar as informações." }, { status: 500 });
   }
 }
 

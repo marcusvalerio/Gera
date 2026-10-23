@@ -149,3 +149,6 @@ td.alloc-name .link{color:var(--text);font-weight:500;font-size:12px}
 .move{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:4px}
 .move .field{width:auto;padding:6px 8px}
 .row.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.order-address{font-size:13px;margin-top:2px}
+.order-notes{display:flex;flex-direction:column;gap:6px;margin-top:8px;align-items:flex-start}
+.order-notes .field{min-height:0;font-size:13px;resize:vertical}
