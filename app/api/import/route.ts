@@ -43,9 +43,9 @@ function parseRows(buffer: Buffer): ImportRow[] {
   if (!raw.length) throw new Error("A primeira aba não contém linhas de dados.");
   const rows = raw.map((r, index) => {
     const order = pick(r, ["ordem", "ordem de serviço", "os", "numero os", "número da ordem", "order number", "id"]);
-    const title = pick(r, ["txt", "atividade", "atividade/serviço", "servico", "serviço", "tarefa", "titulo", "título", "descricao", "descrição"]) || (order ? `Ordem ${order}` : "Trabalho");
+    const title = pick(r, ["texto breve", "txt", "atividade", "atividade/serviço", "servico", "serviço", "tarefa", "titulo", "título", "descricao", "descrição"]) || (order ? `Ordem ${order}` : "Trabalho");
     const equipment = pick(r, ["equipamento", "ativo", "máquina", "maquina"]);
-    const location = pick(r, ["local de instalação", "local instalação", "local", "localização", "localizacao", "setor", "área", "area"]);
+    const location = pick(r, ["local de instalação", "loc.instalação", "local instalação", "local", "localização", "localizacao", "setor", "área", "area"]);
     const description = pick(r, ["descrição detalhada", "descricao detalhada", "observação", "observacao", "detalhes"]);
     const technician = pick(r, ["nome", "técnico", "tecnico", "responsável", "responsavel", "executor"]);
     const priorityRaw = pick(r, ["prioridade", "criticidade"]).toLowerCase();
