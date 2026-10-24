@@ -132,3 +132,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha na importação." }, { status: 400 });
   }
 }
+
+// Planilhas aplicadas (para o super admin poder excluir).
+export async function GET() {
+  try {
+    await requireAdmin(true);
+    const imports = await db()`SELECT i.id, i.filename, i.applied_at, i.created_at, i.total_rows,
+        (SELECT count(*)::int FROM work_orders w WHERE w.last_import_id = i.id) AS orders,
+        (SELECT count(*)::int FROM work_orders w WHERE w.last_import_id = i.id AND w.status <> 'completed') AS removable
+      FROM imports i WHERE i.status = 'applied' AND NOT (i.summary ? 'deleted_at') ORDER BY i.created_at DESC LIMIT 30`;
+    return NextResponse.json({ imports });
+  } catch (error) {
+    if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
+    return NextResponse.json({ error: "Falha ao carregar as planilhas." }, { status: 500 });
+  }
+}
+
+// Exclui as atividades de uma planilha. Atividades concluídas ficam como histórico.
+export async function DELETE(request: Request) {
+  try {
+    const actor = await requireAdmin(true);
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "Informe a planilha." }, { status: 400 });
+    const sql = db();
+    const found = await sql`SELECT filename FROM imports WHERE id = ${id} AND status = 'applied' AND NOT (summary ? 'deleted_at') LIMIT 1`;
+    if (!found.length) return NextResponse.json({ error: "Planilha não encontrada." }, { status: 404 });
+    const [deleted] = await sql.transaction([
+      sql`DELETE FROM work_orders WHERE last_import_id = ${id} AND status <> 'completed' RETURNING id`,
+      sql`UPDATE imports SET summary = summary || ${JSON.stringify({ deleted_at: new Date().toISOString(), deleted_by: actor.username })}::jsonb WHERE id = ${id}`,
+    ]);
+    await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'import.deleted', 'import', ${id}, ${JSON.stringify({ filename: found[0].filename, deleted: deleted.length })}::jsonb)`;
+    return NextResponse.json({ deleted: deleted.length });
+  } catch (error) {
+    if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
+    return NextResponse.json({ error: "Falha ao excluir a planilha." }, { status: 500 });
+  }
+}

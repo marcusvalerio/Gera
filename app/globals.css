@@ -152,3 +152,4 @@ td.alloc-name .link{color:var(--text);font-weight:500;font-size:12px}
 .order-address{font-size:13px;margin-top:2px}
 .order-notes{display:flex;flex-direction:column;gap:6px;margin-top:8px;align-items:flex-start}
 .order-notes .field{min-height:0;font-size:13px;resize:vertical}
+.btn.danger{color:var(--danger);border-color:#f5c2bd}
