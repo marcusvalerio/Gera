@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/permissions";
+import { requireAdmin, requireUser } from "@/lib/permissions";
 
 export async function GET() {
   try {
@@ -53,5 +53,21 @@ export async function PATCH(request: Request) {
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
     return NextResponse.json({ error: "Falha ao atualizar ordem." }, { status: 500 });
+  }
+}
+
+// Exclui uma atividade (somente administrador principal).
+export async function DELETE(request: Request) {
+  try {
+    const actor = await requireAdmin(true);
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "Informe a atividade." }, { status: 400 });
+    const rows = await db()`DELETE FROM work_orders WHERE id = ${id} RETURNING order_number, title, assigned_username`;
+    if (!rows.length) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
+    await db()`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'order.deleted', 'work_order', ${id}, ${JSON.stringify(rows[0])}::jsonb)`;
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
+    return NextResponse.json({ error: "Falha ao excluir a atividade." }, { status: 500 });
   }
 }
