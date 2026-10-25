@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await requireAdmin();
-    const body = await request.json() as { username?: string; day?: string; title?: string; orderNumber?: string; minutes?: number; location?: string };
+    const body = await request.json() as { username?: string; day?: string; title?: string; orderNumber?: string; minutes?: number; location?: string; sapCreated?: boolean | null };
     const title = (body.title ?? "").trim();
     const minutes = Math.round(Number(body.minutes ?? 0));
     if (!body.username || !body.day || !ISO_DATE.test(body.day)) return NextResponse.json({ error: "Informe a pessoa e a data." }, { status: 400 });
@@ -49,8 +49,8 @@ export async function POST(request: Request) {
     const orderNumber = (body.orderNumber ?? "").trim() || null;
     const key = orderNumber ? `os:${orderNumber.toLowerCase()}` : `manual:${createHash("sha256").update(`${body.username}|${body.day}|${title}|${Date.now()}`).digest("hex").slice(0, 32)}`;
     const sql = db();
-    const rows = await sql`INSERT INTO work_orders (external_key, order_number, title, location, assigned_username, scheduled_for, work_minutes, source_data)
-      VALUES (${key}, ${orderNumber}, ${title}, ${(body.location ?? "").trim() || null}, ${body.username}, ${body.day}, ${minutes}, ${JSON.stringify({ __gera: { manual: true } })}::jsonb)
+    const rows = await sql`INSERT INTO work_orders (external_key, order_number, title, location, assigned_username, scheduled_for, work_minutes, sap_created, source_data)
+      VALUES (${key}, ${orderNumber}, ${title}, ${(body.location ?? "").trim() || null}, ${body.username}, ${body.day}, ${minutes}, ${typeof body.sapCreated === "boolean" ? body.sapCreated : null}, ${JSON.stringify({ __gera: { manual: true } })}::jsonb)
       ON CONFLICT (external_key) DO NOTHING RETURNING id`;
     if (!rows.length) return NextResponse.json({ error: `A ordem ${orderNumber} já existe.` }, { status: 409 });
     await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'order.created_manual', 'work_order', ${rows[0].id}, ${JSON.stringify({ username: body.username, day: body.day, minutes })}::jsonb)`;
