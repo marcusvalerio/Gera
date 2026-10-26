@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/permissions";
+import { requireAdmin, requireUser } from "@/lib/permissions";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -18,7 +18,7 @@ function fail(error: unknown, fallback: string) {
 // Grade semanal: minutos alocados por pessoa e por dia.
 export async function GET(request: Request) {
   try {
-    await requireAdmin();
+    await requireUser();
     const start = weekStart(new URL(request.url).searchParams.get("start"));
     const sql = db();
     const [days, people, orders] = await Promise.all([
