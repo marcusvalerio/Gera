@@ -157,3 +157,13 @@ td.alloc-name .link{color:var(--text);font-weight:500;font-size:12px}
 .sap-ask{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
 .sap-yes{font-size:12px;color:var(--success)}
 .sap-no{font-size:12px;color:var(--danger)}
+.row.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.order-tags{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+.tag{font-size:11px;padding:2px 7px;border-radius:999px;background:#f0f2f5;color:var(--muted)}
+.tag-p3m{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.date-history{font-size:12px;color:var(--muted);margin-top:6px}.date-history ul{margin:4px 0 0;padding-left:16px}
+.ind-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.ind-card{border:1px solid var(--line);border-radius:var(--radius);padding:12px;display:flex;flex-direction:column;gap:8px}
+.hbars{display:flex;flex-direction:column;gap:6px}
+.hbar{display:grid;grid-template-columns:90px 1fr 36px;align-items:center;gap:8px;font-size:13px}.hbar strong{text-align:right}
+.late-bar{background:var(--danger)}
