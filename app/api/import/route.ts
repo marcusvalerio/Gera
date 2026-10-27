@@ -24,6 +24,19 @@ function pickRaw(row: Record<string, unknown>, aliases: string[]) {
   for (const alias of aliases) { const value = values.get(normalizedKey(alias)); if (value !== undefined && clean(value)) return value; }
   return null;
 }
+// Indicador: vazio vira "FORA P3M"; aceita cabeçalhos truncados como "Indi...".
+function indicatorOf(row: Record<string, unknown>) {
+  let value = pick(row, ["indicador", "indicador p3m", "ind"]);
+  if (!value) for (const [k, v] of Object.entries(row)) if (normalizedKey(k).startsWith("indi") && clean(v)) { value = clean(v); break; }
+  const up = value.toUpperCase();
+  return !up || up.includes("FORA") || !up.includes("P3M") ? "FORA P3M" : "P3M";
+}
+// Grupo: "1", "G1", "Grupo 1" → "Grupo 1".
+function groupOf(row: Record<string, unknown>) {
+  const value = pick(row, ["grupo", "group", "grp"]);
+  const n = value.match(/\d+/);
+  return n ? `Grupo ${Number(n[0])}` : value;
+}
 // Datas da planilha são brasileiras (dd/mm/aaaa); nunca interpretar como mm/dd.
 function parseDate(value: unknown): string | null {
   if (value == null || value === "") return null;
@@ -57,7 +70,7 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const stable = order || [title, equipment, location].filter(Boolean).join("|");
     if (!stable || !title) throw new Error(`Linha ${index + 2}: não foi possível identificar a ordem ou a atividade.`);
     const external_key = order ? `os:${order.toLowerCase()}` : `hash:${createHash("sha256").update(stable.toLowerCase()).digest("hex").slice(0,32)}`;
-    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), source_data: { ...r, __gera: { name: technician, indicator: pick(r, ["indicador"]), week: pick(r, ["semana"]), work_minutes: Math.round(workMinutes) } } };
+    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), source_data: { ...r, __gera: { name: technician, indicator: indicatorOf(r), week: pick(r, ["semana", "sem"]).toUpperCase(), group: groupOf(r), work_minutes: Math.round(workMinutes) } } };
   });
   const seen = new Set<string>();
   for (const row of rows) { if (seen.has(row.external_key)) throw new Error(`A planilha contém identificador duplicado: ${row.order_number ?? row.title}.`); seen.add(row.external_key); }
