@@ -24,7 +24,7 @@ const PRIORITY_LABEL: Record<string,string> = { low:"Baixa", normal:"Normal", hi
 type Profile = { username:string; display_name:string; role:"super_admin"|"admin"|"technician"; must_change_password:boolean };
 type Order = { id:string; order_number:string|null; title:string; description:string|null; location:string|null; equipment:string|null; priority:string; status:string; assigned_username:string|null; scheduled_for:string|null; notes:string|null; sap_created:boolean|null; sap_closed:boolean|null; week:string|null; indicator:string; grp:string|null; date_history:Array<{from:string|null;to:string;by:string;at:string}> };
 type IndRow = { name:string; open?:number; done:number; late:number; minutes?:number; total?:number; on_time?:number; due?:number };
-type Indicators = { groups:IndRow[]; p3m:IndRow[]; weeks:IndRow[]; weekPeople:Array<{week:string;person:string;total:number;done:number;late:number}> };
+type Indicators = { groups:IndRow[]; p3m:IndRow[]; weeks:IndRow[]; workCenters:Array<{name:string;total:number;minutes:number;done:number;pending:number}>; weekPeople:Array<{week:string;person:string;total:number;done:number;late:number}> };
 type SheetPerson = { username:string; sheet_name:string|null; total:number; completed:number; registered:boolean; suggestedName:string };
 type AppUser = { username:string; display_name:string; role:string; is_active:boolean; must_change_password:boolean };
 type PersonReport = { username:string; profile:AppUser|null; summary:{total:number;completed:number;pending:number;in_progress:number;overdue:number;minutes:number}; orders:Array<{id:string;order_number:string|null;title:string;location:string|null;status:string;scheduled_for:string|null;work_minutes:number;completed_at:string|null;sheet_name:string|null}>; occurrences:Array<{category:string;description:string;status:string;created_at:string;order_number:string|null}> };
@@ -64,6 +64,13 @@ export default function Home() {
   const [ordForm,setOrdForm] = useState<{username:string;day:string;minutes:string;title:string;orderNumber:string;location:string;sapCreated?:boolean|null;week?:string;indicator?:string;group?:string}|null>(null);
   const [imports,setImports] = useState<Array<{id:string;filename:string;applied_at:string|null;created_at:string;total_rows:number;orders:number;removable:number}>|null>(null);
   const [ind,setInd] = useState<Indicators|null>(null);
+  const [indDays,setIndDays] = useState(0);
+  const [allocSel,setAllocSel] = useState<string[]>([]);
+  const [allocSearch,setAllocSearch] = useState("");
+  const [allocFilterOpen,setAllocFilterOpen] = useState(false);
+  const [allocShowAll,setAllocShowAll] = useState(false);
+  const [minutesEdit,setMinutesEdit] = useState<Record<string,string>>({});
+  const [undoExclude,setUndoExclude] = useState<{username:string;name:string;orderIds:string[]}|null>(null);
   const [notes,setNotes] = useState<Record<string,string>>({});
   const [people,setPeople] = useState<{people:SheetPerson[];users:AppUser[]}|null>(null);
   const [report,setReport] = useState<PersonReport|null>(null);
@@ -201,6 +208,29 @@ export default function Home() {
     setWeek(data); setCell(null);
   }
   function weekMinutes(username:string, day:string) { return (week?.orders ?? []).filter(o=>o.assigned_username===username&&o.day===day).reduce((sum,o)=>sum+Number(o.work_minutes||0),0); }
+  async function saveMinutes(id:string) {
+    const raw = (minutesEdit[id] ?? "").trim();
+    if (!/^\d+$/.test(raw) || Number(raw) > 1440) { setError("Tempo inválido: informe minutos inteiros de 0 a 1440 (sem sinal ou letras)."); return; }
+    const minutes = Number(raw); setError(""); setMessage("");
+    const res = await fetch("/api/admin/allocation/week",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id,minutes})});
+    const data = await res.json(); if (!res.ok) { setError(data.error || "Falha ao salvar o tempo."); return; }
+    setWeek(w=>w&&({...w,orders:w.orders.map(o=>o.id===id?{...o,work_minutes:minutes}:o)}));
+    setMinutesEdit(m=>{const c={...m};delete c[id];return c;}); setMessage(`Tempo salvo: ${formatMinutes(minutes)}.`);
+  }
+  async function excludePerson(username:string, name:string) {
+    if (!window.confirm(`Excluir ${name}? As atividades dela ficarão sem responsável.`)) return;
+    setError(""); setMessage("");
+    const res = await fetch(`/api/admin/allocation/people?username=${encodeURIComponent(username)}`,{method:"DELETE"}); const data = await res.json();
+    if (!res.ok) { setError(data.error || "Falha ao excluir a pessoa."); return; }
+    setUndoExclude({username,name,orderIds:data.orderIds}); setAllocSel(s=>s.filter(u=>u!==username)); setCell(null);
+    await loadWeek(week?.start);
+  }
+  async function undoExcludePerson() {
+    const u = undoExclude; if (!u) return; setError(""); setMessage("");
+    const res = await fetch("/api/admin/allocation/people",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({username:u.username,orderIds:u.orderIds})});
+    const data = await res.json(); if (!res.ok) { setError(data.error || "Falha ao desfazer."); return; }
+    setUndoExclude(null); setMessage(`${u.name} voltou para a alocação (${data.restored} atividade(s) devolvida(s)).`); await loadWeek(week?.start);
+  }
   async function moveOrder(id:string, day:string) {
     setError(""); setMessage("");
     const res = await fetch("/api/admin/allocation/week",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id,day})});
@@ -250,8 +280,8 @@ export default function Home() {
     const data = await res.json(); if (!res.ok) { setError(data.error || "Falha ao registrar a baixa no SAP."); return; }
     setMessage(done?"Baixa no SAP registrada.":"Registrado: baixa no SAP não feita."); await load();
   }
-  async function loadIndicators() {
-    const res = await fetch("/api/indicators"); const data = await res.json();
+  async function loadIndicators(days = indDays) {
+    const res = await fetch(`/api/indicators${days?`?days=${days}`:""}`); const data = await res.json();
     if (!res.ok) { setError((data.error || "Falha ao carregar os indicadores.") + (data.detail ? ` (${data.detail})` : "")); return; }
     setInd(data);
   }
@@ -340,15 +370,31 @@ export default function Home() {
     {current==="allocation"&&<section className="stack">
       <div className="spread dashboard-heading"><div><h1>Alocação semanal</h1><p className="muted">Minutos de trabalho previstos por pessoa e por dia. Clique numa célula para ver, mover ou criar atividades.</p></div>
         <div className="row"><button className="btn ghost" onClick={()=>void loadWeek(shiftDay(week?.start,-7))}>‹ Semana anterior</button><input className="field date-field" type="date" value={week?.start??""} onChange={e=>e.target.value&&void loadWeek(e.target.value)} aria-label="Escolher semana"/><button className="btn ghost" onClick={()=>void loadWeek(shiftDay(week?.start,7))}>Próxima semana ›</button><button className="btn ghost" onClick={()=>void loadWeek()}>Hoje</button></div></div>
-      {!week?<div className="panel">Carregando alocação…</div>:<>
+      {!week?<div className="panel">Carregando alocação…</div>:(()=>{
+      const weekTotal=(u:string)=>week.orders.filter(o=>o.assigned_username===u).reduce((a,o)=>a+Number(o.work_minutes||0),0);
+      const visible=week.people.filter(p=>(allocSel.length===0||allocSel.includes(p.username))&&(allocShowAll||weekTotal(p.username)>0));
+      const hidden=week.people.filter(p=>weekTotal(p.username)===0).length;
+      const q=allocSearch.trim().toLowerCase();
+      const listed=week.people.filter(p=>!q||(p.name||p.username).toLowerCase().includes(q)||p.username.includes(q));
+      return <>
+      {undoExclude&&<div className="notice spread"><span>{undoExclude.name} foi excluído(a) da alocação · {undoExclude.orderIds.length} atividade(s) ficaram sem responsável.</span><div className="row"><button className="btn sm" onClick={()=>void undoExcludePerson()}>Desfazer</button><button className="btn sm ghost" onClick={()=>setUndoExclude(null)}>Fechar</button></div></div>}
+      <div className="panel stack alloc-filter">
+        <div className="row"><button className="btn ghost" aria-expanded={allocFilterOpen} onClick={()=>setAllocFilterOpen(o=>!o)}>Nomes: {allocSel.length?`${allocSel.length} selecionado${allocSel.length>1?"s":""}`:"todos"} {allocFilterOpen?"▲":"▼"}</button>
+          <label className="check"><input type="checkbox" checked={allocShowAll} onChange={e=>setAllocShowAll(e.target.checked)}/>Mostrar todos{hidden>0&&!allocShowAll?` (${hidden} sem atividade oculto${hidden>1?"s":""})`:""}</label></div>
+        {allocFilterOpen&&<div className="stack">
+          <input className="field" type="search" placeholder="Buscar nome…" value={allocSearch} onChange={e=>setAllocSearch(e.target.value)} aria-label="Buscar nome"/>
+          <div className="row"><button className="btn sm secondary" onClick={()=>setAllocSel(week.people.map(p=>p.username))}>Selecionar todos</button><button className="btn sm ghost" onClick={()=>setAllocSel([])}>Limpar</button><span className="muted">{allocSel.length} selecionado{allocSel.length===1?"":"s"}</span></div>
+          {listed.length===0?<p className="muted">Nenhum nome encontrado para “{allocSearch}”.</p>:<div className="check-list">{listed.map(p=><label key={p.username} className="check"><input type="checkbox" checked={allocSel.includes(p.username)} onChange={e=>setAllocSel(s=>e.target.checked?[...s,p.username]:s.filter(u=>u!==p.username))}/>{p.name||p.username}</label>)}</div>}
+        </div>}
+      </div>
       <div className="panel alloc-panel">
         <div className="table-wrap"><table className="alloc"><thead><tr><th className="alloc-name">Nome</th>{week.days.map(d=>{const dt=new Date(d+"T12:00:00");return <th key={d} className={"alloc-day"+(d===todayIso()?" today":"")}><span>{dt.toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","").toUpperCase()}</span><small>{dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}).replace(". de ","-").replace(" de ","-").replace(".","")}</small></th>;})}<th className="num">Total</th></tr></thead>
-          <tbody>{week.people.map(p=>{const totals=week.days.map(d=>weekMinutes(p.username,d));return <tr key={p.username}><td className="alloc-name">{admin?<button className="link" onClick={()=>void openPerson(p.username)}>{p.name||p.username}</button>:(p.name||p.username)}</td>{week.days.map((d,k)=>{const m=totals[k];const sel=cell?.username===p.username&&cell.day===d;return <td key={d} className={"alloc-cell "+allocClass(m)+(sel?" selected":"")} onClick={()=>{setCell({username:p.username,day:d});setNewAct(a=>({...a,username:p.username,day:d}));}}>{m}</td>;})}<td className="num"><strong>{formatMinutes(totals.reduce((a,b)=>a+b,0))}</strong></td></tr>;})}</tbody></table></div>
+          <tbody>{visible.length===0&&<tr><td colSpan={week.days.length+2} className="muted empty-cell">{allocSel.length?"Nenhuma das pessoas selecionadas tem atividade nesta semana.":"Ninguém tem atividade alocada nesta semana."}{!allocShowAll&&" Marque “Mostrar todos” para ver quem está sem atividade."}</td></tr>}{visible.map(p=>{const totals=week.days.map(d=>weekMinutes(p.username,d));return <tr key={p.username}><td className="alloc-name"><div className="alloc-person">{admin?<button className="link" onClick={()=>void openPerson(p.username)}>{p.name||p.username}</button>:<span>{p.name||p.username}</span>}{admin&&<button className="icon-btn" title={`Excluir ${p.name||p.username}`} aria-label={`Excluir ${p.name||p.username}`} onClick={()=>void excludePerson(p.username,p.name||p.username)}>✕</button>}</div></td>{week.days.map((d,k)=>{const m=totals[k];const sel=cell?.username===p.username&&cell.day===d;return <td key={d} className={"alloc-cell "+allocClass(m)+(sel?" selected":"")} onClick={()=>{setCell({username:p.username,day:d});setNewAct(a=>({...a,username:p.username,day:d}));}}>{m}</td>;})}<td className="num"><strong>{formatMinutes(totals.reduce((a,b)=>a+b,0))}</strong></td></tr>;})}</tbody></table></div>
         <div className="legend alloc-legend"><span><i className="alloc-ok"/>ALC OK (360–480 min)</span><span><i className="alloc-low"/>ALC &lt; 360 min</span><span><i className="alloc-high"/>ALC &gt; 480 min</span><span><i className="alloc-nok"/>ALC NOK (sem alocação)</span></div>
       </div>
       <div className="split">
         <div className="panel stack"><h2>{cell?`${week.people.find(p=>p.username===cell.username)?.name||cell.username} · ${new Date(cell.day+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"})}`:"Atividades do dia"}</h2>
-          {!cell?<p className="muted">Selecione uma célula da grade.</p>:(()=>{const list=week.orders.filter(o=>o.assigned_username===cell.username&&o.day===cell.day);return list.length===0?<p className="muted">Nenhuma atividade alocada neste dia.</p>:<ul className="plain-list">{list.map(o=><li key={o.id} className="alloc-order"><div><strong>{o.order_number||"Sem número"}</strong> · {o.title}<div className="muted">{formatMinutes(o.work_minutes)}{o.location?` · ${o.location}`:""} · {STATUS_LABEL[o.status]||o.status}</div></div>{o.status==="completed"?<span className="locked">Concluída</span>:<label className="move">Mudar data<input className="field" type="date" defaultValue={o.day} onChange={e=>e.target.value&&e.target.value!==o.day&&void moveOrder(o.id,e.target.value)}/></label>}</li>)}</ul>;})()}
+          {!cell?<p className="muted">Selecione uma célula da grade.</p>:(()=>{const list=week.orders.filter(o=>o.assigned_username===cell.username&&o.day===cell.day);return list.length===0?<p className="muted">Nenhuma atividade alocada neste dia.</p>:<ul className="plain-list">{list.map(o=><li key={o.id} className="alloc-order"><div><strong>{o.order_number||"Sem número"}</strong> · {o.title}<div className="muted">{formatMinutes(o.work_minutes)}{o.location?` · ${o.location}`:""} · {STATUS_LABEL[o.status]||o.status}</div>{o.status!=="completed"&&<form className="minutes-edit" onSubmit={e=>{e.preventDefault();void saveMinutes(o.id);}}><label className="move">Tempo (min)<input className="field" type="number" inputMode="numeric" min={0} max={1440} step={1} placeholder={Number(o.work_minutes)?"":"Incluir tempo"} value={minutesEdit[o.id]??(Number(o.work_minutes)?String(o.work_minutes):"")} onChange={e=>setMinutesEdit(m=>({...m,[o.id]:e.target.value}))}/></label>{minutesEdit[o.id]!==undefined&&<button className="btn sm">Salvar tempo</button>}</form>}</div>{o.status==="completed"?<span className="locked">Concluída</span>:<label className="move">Mudar data<input className="field" type="date" defaultValue={o.day} onChange={e=>e.target.value&&e.target.value!==o.day&&void moveOrder(o.id,e.target.value)}/></label>}</li>)}</ul>;})()}
         </div>
         {admin&&<form className="panel stack" onSubmit={createActivity}><h2>Nova atividade</h2>
           <div><label className="label">Responsável</label><select className="field" value={newAct.username} onChange={e=>setNewAct({...newAct,username:e.target.value})} required><option value="">Selecione…</option>{week.people.map(p=><option key={p.username} value={p.username}>{p.name||p.username}</option>)}</select></div>
@@ -357,7 +403,7 @@ export default function Home() {
           <div className="row two"><div><label className="label">Nº da ordem (opcional)</label><input className="field" value={newAct.orderNumber} onChange={e=>setNewAct({...newAct,orderNumber:e.target.value})}/></div><div><label className="label">Local (opcional)</label><input className="field" value={newAct.location} onChange={e=>setNewAct({...newAct,location:e.target.value})}/></div></div>
           <div className="row"><button className="btn" disabled={busy}>{busy?"Salvando…":"Criar atividade"}</button><SapLink label="Criar ordem no SAP" question="Criou a ordem no SAP?" value={newAct.sapCreated} onAnswer={v=>setNewAct(n=>({...n,sapCreated:v}))}/></div>
         </form>}
-      </div></>}
+      </div></>;})()}
     </section>}
     {admin&&current==="dashboard"&&<section className="stack">
       <div className="spread dashboard-heading"><div><h1>Visão gerencial</h1><p className="muted">Indicadores operacionais baseados nos dados do Gera.</p></div><div className="row"><select className="field period-select" aria-label="Período do relatório" value={periodDays} onChange={e=>{const d=Number(e.target.value);setPeriodDays(d);void loadAnalytics(d);}}><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option></select><button className="btn ghost" onClick={()=>void loadAnalytics()}>Atualizar</button><button className="btn secondary" disabled={!analytics} onClick={exportAnalyticsCsv}>Exportar CSV</button></div></div>
@@ -385,8 +431,11 @@ export default function Home() {
       </>}
     </section>}
     {current==="indicators"&&<section className="stack">
-      <div className="spread dashboard-heading"><div><h1>Indicadores</h1><p className="muted">Grupos, P3M e semanas, a partir das informações da planilha.</p></div><button className="btn ghost" onClick={()=>void loadIndicators()}>Atualizar</button></div>
+      <div className="spread dashboard-heading"><div><h1>Indicadores</h1><p className="muted">Grupos, P3M e semanas, a partir das informações da planilha.</p></div><div className="row"><select className="field period-select" aria-label="Período" value={indDays} onChange={e=>{const d=Number(e.target.value);setIndDays(d);void loadIndicators(d);}}><option value={0}>Todo o período</option><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option><option value={90}>Últimos 90 dias</option><option value={180}>Últimos 180 dias</option><option value={365}>Últimos 12 meses</option></select><button className="btn ghost" onClick={()=>void loadIndicators()}>Atualizar</button></div></div>
       {!ind?<div className="panel">Carregando indicadores…</div>:<>
+      <div className="panel stack"><h2>Centro de trabalho</h2>{(ind.workCenters??[]).length===0?<p className="muted">Nenhuma atividade no período selecionado.</p>:<>
+        <Bars rows={ind.workCenters.map(c=>({label:c.name,value:c.total,cls:"status-bar"}))}/>
+        <div className="table-wrap"><table className="wc-table"><thead><tr><th>Centro</th><th className="num">Ordens</th><th className="num">Horas</th><th className="num">Concluídas</th><th className="num">Pendentes</th></tr></thead><tbody>{ind.workCenters.map(c=><tr key={c.name}><td>{c.name}</td><td className="num">{c.total}</td><td className="num">{hours(c.minutes)}</td><td className="num">{pct(c.done,c.total)}%</td><td className="num">{pct(c.pending,c.total)}%</td></tr>)}</tbody></table></div></>}</div>
       <div className="panel stack"><h2>Grupos</h2>{ind.groups.length===0?<p className="muted">Sem atividades.</p>:<div className="ind-grid">{ind.groups.map(g=><div className="ind-card" key={g.name}><div className="spread"><strong>{g.name}</strong><span className="muted">{hours(g.minutes)}</span></div><Bars rows={[{label:"Em aberto",value:g.open??0,cls:"created-bar"},{label:"Executadas",value:g.done,cls:"completed-bar"},{label:"Em atraso",value:g.late,cls:"late-bar"}]}/></div>)}</div>}</div>
       <div className="panel stack"><h2>P3M</h2><div className="ind-grid">{ind.p3m.map(p=><div className="ind-card" key={p.name}><div className="spread"><strong>{p.name}</strong><span className="muted">{p.total} atividade(s) · {hours(p.minutes)}</span></div><Bars rows={[{label:"Executadas",value:p.done,cls:"completed-bar"},{label:"No prazo",value:p.on_time??0,cls:"status-bar"},{label:"Em atraso",value:p.late,cls:"late-bar"}]}/></div>)}</div>
         {(()=>{const p=ind.p3m.find(x=>x.name==="P3M");if(!p)return <p className="muted">Nenhuma atividade P3M.</p>;const real=pct(p.on_time,p.due),total=pct(p.done,p.due);return <div className="ind-grid"><div className="ind-card"><span className="muted">Eficiência P3M Real</span><strong className="stats">{real}%</strong><div className="bar-track"><div className="bar completed-bar" style={{width:`${real}%`}}/></div><small className="muted">{p.on_time} executada(s) até o vencimento de {p.due} vencida(s) ou executada(s)</small></div><div className="ind-card"><span className="muted">Eficiência P3M Total</span><strong className="stats">{total}%</strong><div className="bar-track"><div className="bar status-bar" style={{width:`${total}%`}}/></div><small className="muted">{p.done} executada(s), em qualquer data, de {p.due}</small></div></div>;})()}

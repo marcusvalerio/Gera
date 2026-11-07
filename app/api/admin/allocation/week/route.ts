@@ -27,7 +27,10 @@ export async function GET(request: Request) {
             SELECT assigned_username AS username, NULLIF(source_data->'__gera'->>'name', '') AS name FROM work_orders WHERE assigned_username IS NOT NULL
             UNION ALL
             SELECT username, upper(display_name) FROM app_users WHERE role = 'technician' AND is_active
-          ) p GROUP BY username ORDER BY MAX(name) NULLS LAST, username`,
+          ) p
+          WHERE NOT EXISTS (SELECT 1 FROM allocation_excluded x WHERE x.username = p.username)
+             OR EXISTS (SELECT 1 FROM work_orders w WHERE w.assigned_username = p.username AND w.scheduled_for BETWEEN ${start}::date AND ${start}::date + 6)
+          GROUP BY username ORDER BY MAX(name) NULLS LAST, username`,
       sql`SELECT id, order_number, title, location, status, assigned_username, to_char(scheduled_for, 'YYYY-MM-DD') AS day, work_minutes
           FROM work_orders WHERE scheduled_for BETWEEN ${start}::date AND ${start}::date + 6 AND status <> 'cancelled'
           ORDER BY scheduled_for, order_number`,
@@ -58,20 +61,32 @@ export async function POST(request: Request) {
   } catch (error) { return fail(error, "Falha ao criar a atividade."); }
 }
 
-// Muda a data (e opcionalmente o responsável) de uma atividade.
+// Muda a data, o tempo (minutos) e/ou o responsável de uma atividade.
 export async function PATCH(request: Request) {
   try {
     const actor = await requireUser();
-    const body = await request.json() as { id?: string; day?: string; username?: string };
-    if (!body.id || !body.day || !ISO_DATE.test(body.day)) return NextResponse.json({ error: "Informe a atividade e a nova data." }, { status: 400 });
+    const body = await request.json() as { id?: string; day?: string; username?: string; minutes?: unknown };
+    if (!body.id) return NextResponse.json({ error: "Informe a atividade." }, { status: 400 });
+    if (body.day !== undefined && !ISO_DATE.test(String(body.day))) return NextResponse.json({ error: "Data inválida." }, { status: 400 });
+    let minutes: number | null = null;
+    if (body.minutes !== undefined) {
+      minutes = typeof body.minutes === "number" ? body.minutes : Number.NaN;
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) return NextResponse.json({ error: "Tempo inválido: informe minutos inteiros de 0 a 1440." }, { status: 400 });
+    }
+    if (body.day === undefined && minutes === null) return NextResponse.json({ error: "Informe a nova data ou o tempo." }, { status: 400 });
     const sql = db();
-    const found = await sql`SELECT status, to_char(scheduled_for, 'YYYY-MM-DD') AS day, assigned_username FROM work_orders WHERE id = ${body.id} LIMIT 1`;
+    const found = await sql`SELECT status, to_char(scheduled_for, 'YYYY-MM-DD') AS day, assigned_username, work_minutes FROM work_orders WHERE id = ${body.id} LIMIT 1`;
     if (!found.length) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
     if (found[0].status === "completed") return NextResponse.json({ error: "Atividade já concluída. Não pode mais ser alterada." }, { status: 409 });
+    if (minutes !== null && minutes !== Number(found[0].work_minutes)) {
+      await sql`UPDATE work_orders SET work_minutes = ${minutes}, updated_at = now() WHERE id = ${body.id}`;
+      await sql`INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details) VALUES (${body.id}, 'minutes.changed', ${actor.auth_user_id}, ${JSON.stringify({ from: Number(found[0].work_minutes), to: minutes })}::jsonb)`;
+    }
+    if (body.day === undefined) return NextResponse.json({ ok: true });
     const username = (actor.role !== "technician" && body.username) || found[0].assigned_username;
     if (found[0].day === body.day && username === found[0].assigned_username) return NextResponse.json({ ok: true });
     await sql`UPDATE work_orders SET scheduled_for = ${body.day}, assigned_username = ${username}, updated_at = now() WHERE id = ${body.id}`;
     await sql`INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details) VALUES (${body.id}, 'schedule.changed', ${actor.auth_user_id}, ${JSON.stringify({ from: found[0].day, to: body.day, username })}::jsonb)`;
     return NextResponse.json({ ok: true });
-  } catch (error) { return fail(error, "Falha ao mudar a data."); }
+  } catch (error) { return fail(error, "Falha ao alterar a atividade."); }
 }

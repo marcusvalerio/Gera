@@ -70,7 +70,7 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const stable = order || [title, equipment, location].filter(Boolean).join("|");
     if (!stable || !title) throw new Error(`Linha ${index + 2}: não foi possível identificar a ordem ou a atividade.`);
     const external_key = order ? `os:${order.toLowerCase()}` : `hash:${createHash("sha256").update(stable.toLowerCase()).digest("hex").slice(0,32)}`;
-    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), source_data: { ...r, __gera: { name: technician, indicator: indicatorOf(r), week: pick(r, ["semana", "sem"]).toUpperCase(), group: groupOf(r), work_minutes: Math.round(workMinutes) } } };
+    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), source_data: { ...r, __gera: { name: technician, indicator: indicatorOf(r), week: pick(r, ["semana", "sem"]).toUpperCase(), group: groupOf(r), work_center: pick(r, ["centrab respons", "centrab respons.", "centro de trabalho", "centro trabalho", "cen trab", "centrab", "work center"]), work_minutes: Math.round(workMinutes) } } };
   });
   const seen = new Set<string>();
   for (const row of rows) { if (seen.has(row.external_key)) throw new Error(`A planilha contém identificador duplicado: ${row.order_number ?? row.title}.`); seen.add(row.external_key); }
