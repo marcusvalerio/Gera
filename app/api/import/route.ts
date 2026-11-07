@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/permissions";
 import { usernameFromDisplayName } from "@/lib/username";
 
 export const runtime = "nodejs";
-type ImportRow = { external_key: string; order_number: string | null; title: string; description: string | null; location: string | null; equipment: string | null; assigned_username: string | null; priority: "low" | "normal" | "high" | "critical"; scheduled_for: string | null; work_minutes: number; source_data: Record<string, unknown> };
+type ImportRow = { external_key: string; order_number: string | null; title: string; description: string | null; location: string | null; equipment: string | null; assigned_username: string | null; priority: "low" | "normal" | "high" | "critical"; scheduled_for: string | null; work_minutes: number; done: boolean; source_data: Record<string, unknown> };
 function clean(value: unknown) { return value == null ? "" : String(value).trim(); }
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -67,10 +67,13 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const workRaw = pick(r, ["trabalho", "trabalh", "trab", "tempo de trabalho", "tempo", "minutos", "work minutes"]);
     const workMinutes = workRaw ? Number(workRaw.replace(",", ".")) : 0;
     if (!Number.isFinite(workMinutes) || workMinutes < 0) throw new Error(`Linha ${index + 2}: Trabalho deve ser informado em minutos válidos.`);
+    // Coluna Status: "Realizado" conclui a atividade; "Pendente" (ou vazio) segue o fluxo normal.
+    const statusRaw = normalizedKey(pick(r, ["status", "situação", "situacao", "status da ordem"]));
+    const done = /^(realizad|concluid|executad|finalizad|feito)/.test(statusRaw);
     const stable = order || [title, equipment, location].filter(Boolean).join("|");
     if (!stable || !title) throw new Error(`Linha ${index + 2}: não foi possível identificar a ordem ou a atividade.`);
     const external_key = order ? `os:${order.toLowerCase()}` : `hash:${createHash("sha256").update(stable.toLowerCase()).digest("hex").slice(0,32)}`;
-    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), source_data: { ...r, __gera: { name: technician, indicator: indicatorOf(r), week: pick(r, ["semana", "sem"]).toUpperCase(), group: groupOf(r), work_center: pick(r, ["centrab respons", "centrab respons.", "centro de trabalho", "centro trabalho", "cen trab", "centrab", "work center"]), work_minutes: Math.round(workMinutes) } } };
+    return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), done, source_data: { ...r, __gera: { name: technician, indicator: indicatorOf(r), week: pick(r, ["semana", "sem"]).toUpperCase(), group: groupOf(r), work_center: pick(r, ["centrab respons", "centrab respons.", "centro de trabalho", "centro trabalho", "cen trab", "centrab", "work center"]), work_minutes: Math.round(workMinutes) } } };
   });
   const seen = new Set<string>();
   for (const row of rows) { if (seen.has(row.external_key)) throw new Error(`A planilha contém identificador duplicado: ${row.order_number ?? row.title}.`); seen.add(row.external_key); }
@@ -105,7 +108,7 @@ export async function POST(request: Request) {
         || String(current.scheduled_for ?? "").slice(0,10) !== String(r.scheduled_for ?? "")
         || Number(current.work_minutes ?? 0) !== r.work_minutes
         || canonical(current.source_data ?? {}) !== canonical(r.source_data);
-      return changed ? "changed" : "unchanged";
+      return changed || (r.done && current.status !== "completed") ? "changed" : "unchanged";
     };
     const actions = new Map(rows.map(r => [r.external_key, actionFor(r)]));
     const absent = keys.length
@@ -118,6 +121,7 @@ export async function POST(request: Request) {
       unchanged: rows.filter(r => actions.get(r.external_key) === "unchanged").length,
       existing: rows.filter(r => actions.get(r.external_key) !== "new").length,
       notInFile: Number(absent[0]?.count ?? 0),
+      realized: rows.filter(r => r.done && String(existingMap.get(r.external_key)?.status ?? "") !== "completed").length,
       completedPreserved: rows.filter(r => String(existingMap.get(r.external_key)?.status ?? "") === "completed").length,
       preview: rows.slice(0, 100).map(r => ({ order: r.order_number, title: r.title, equipment: r.equipment, location: r.location, assigned: r.assigned_username, priority: r.priority, scheduled_for: r.scheduled_for, work_minutes: r.work_minutes, name: (r.source_data.__gera as Record<string, unknown> | undefined)?.name, indicator: (r.source_data.__gera as Record<string, unknown> | undefined)?.indicator, week: (r.source_data.__gera as Record<string, unknown> | undefined)?.week, action: actions.get(r.external_key) })),
     };
@@ -128,10 +132,10 @@ export async function POST(request: Request) {
     ];
     for (const r of rows) {
       statements.push(sql`WITH upserted AS (
-        INSERT INTO work_orders (external_key, order_number, title, description, location, equipment, priority, assigned_username, scheduled_for, source_data, work_minutes, last_import_id)
-        VALUES (${r.external_key}, ${r.order_number}, ${r.title}, ${r.description}, ${r.location}, ${r.equipment}, ${r.priority}, ${r.assigned_username}, ${r.scheduled_for}, ${JSON.stringify(r.source_data)}::jsonb, ${r.work_minutes}, ${importId})
-        ON CONFLICT (external_key) DO UPDATE SET order_number = EXCLUDED.order_number, title = EXCLUDED.title, description = EXCLUDED.description, location = EXCLUDED.location, equipment = EXCLUDED.equipment, priority = EXCLUDED.priority, assigned_username = EXCLUDED.assigned_username, scheduled_for = EXCLUDED.scheduled_for, source_data = EXCLUDED.source_data, work_minutes = EXCLUDED.work_minutes, last_import_id = EXCLUDED.last_import_id, updated_at = now()
-        WHERE work_orders.order_number IS DISTINCT FROM EXCLUDED.order_number OR work_orders.title IS DISTINCT FROM EXCLUDED.title OR work_orders.description IS DISTINCT FROM EXCLUDED.description OR work_orders.location IS DISTINCT FROM EXCLUDED.location OR work_orders.equipment IS DISTINCT FROM EXCLUDED.equipment OR work_orders.priority IS DISTINCT FROM EXCLUDED.priority OR work_orders.assigned_username IS DISTINCT FROM EXCLUDED.assigned_username OR work_orders.scheduled_for IS DISTINCT FROM EXCLUDED.scheduled_for OR work_orders.source_data IS DISTINCT FROM EXCLUDED.source_data OR work_orders.work_minutes IS DISTINCT FROM EXCLUDED.work_minutes
+        INSERT INTO work_orders (external_key, order_number, title, description, location, equipment, priority, assigned_username, scheduled_for, source_data, work_minutes, last_import_id, status, completed_at, completed_by)
+        VALUES (${r.external_key}, ${r.order_number}, ${r.title}, ${r.description}, ${r.location}, ${r.equipment}, ${r.priority}, ${r.assigned_username}, ${r.scheduled_for}, ${JSON.stringify(r.source_data)}::jsonb, ${r.work_minutes}, ${importId}, ${r.done ? "completed" : "pending"}, ${r.done ? new Date().toISOString() : null}, ${r.done ? actor.username : null})
+        ON CONFLICT (external_key) DO UPDATE SET status = CASE WHEN EXCLUDED.status = 'completed' THEN 'completed' ELSE work_orders.status END, completed_at = CASE WHEN EXCLUDED.status = 'completed' THEN COALESCE(work_orders.completed_at, now()) ELSE work_orders.completed_at END, completed_by = CASE WHEN EXCLUDED.status = 'completed' AND work_orders.status <> 'completed' THEN EXCLUDED.completed_by ELSE work_orders.completed_by END, order_number = EXCLUDED.order_number, title = EXCLUDED.title, description = EXCLUDED.description, location = EXCLUDED.location, equipment = EXCLUDED.equipment, priority = EXCLUDED.priority, assigned_username = EXCLUDED.assigned_username, scheduled_for = EXCLUDED.scheduled_for, source_data = EXCLUDED.source_data, work_minutes = EXCLUDED.work_minutes, last_import_id = EXCLUDED.last_import_id, updated_at = now()
+        WHERE work_orders.order_number IS DISTINCT FROM EXCLUDED.order_number OR work_orders.title IS DISTINCT FROM EXCLUDED.title OR work_orders.description IS DISTINCT FROM EXCLUDED.description OR work_orders.location IS DISTINCT FROM EXCLUDED.location OR work_orders.equipment IS DISTINCT FROM EXCLUDED.equipment OR work_orders.priority IS DISTINCT FROM EXCLUDED.priority OR work_orders.assigned_username IS DISTINCT FROM EXCLUDED.assigned_username OR work_orders.scheduled_for IS DISTINCT FROM EXCLUDED.scheduled_for OR work_orders.source_data IS DISTINCT FROM EXCLUDED.source_data OR work_orders.work_minutes IS DISTINCT FROM EXCLUDED.work_minutes OR (EXCLUDED.status = 'completed' AND work_orders.status <> 'completed')
         RETURNING id
       )
       INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details)
@@ -139,7 +143,7 @@ export async function POST(request: Request) {
     }
     statements.push(sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'orders.imported', 'import', ${importId}, ${JSON.stringify({ filename: file.name, total: rows.length, new: summary.new, changed: summary.changed, unchanged: summary.unchanged, notInFile: summary.notInFile })}::jsonb)`);
     await sql.transaction(statements);
-    return NextResponse.json({ summary, importId, message: "Importação aplicada. Ordens concluídas tiveram seu status preservado; itens ausentes no arquivo não foram excluídos." });
+    return NextResponse.json({ summary, importId, message: (summary.realized ? `${summary.realized} atividade(s) com status "Realizado" foram concluídas. ` : "") + "Importação aplicada. Ordens concluídas tiveram seu status preservado; itens ausentes no arquivo não foram excluídos." });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha na importação." }, { status: 400 });
