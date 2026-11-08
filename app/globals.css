@@ -215,22 +215,6 @@ td.alloc-name .link{color:var(--text);font-weight:500;font-size:12px}
 .hbar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .assign-edit{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
 
-/* ===== Abertura: chopp subindo ===== */
-.splash{position:fixed;inset:0;z-index:100;overflow:hidden;cursor:pointer;background:radial-gradient(ellipse at 50% 30%,#163d85 0%,#0A2A66 50%,#051637 100%);animation:splashOut .7s ease 4.6s forwards}
-.beer{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(180deg,#F7BE3A 0%,#EDA21A 35%,#D8840C 75%,#BF6C0A 100%);animation:beerFill 2.8s cubic-bezier(.5,.05,.25,1) .2s both}
-.beer-light{position:absolute;inset:0;background:radial-gradient(ellipse 70% 45% at 45% 20%,rgba(255,232,150,.45),transparent 70%),linear-gradient(90deg,rgba(120,50,0,.22) 0%,transparent 18%,transparent 82%,rgba(120,50,0,.22) 100%)}
-.beer-bubble{position:absolute;bottom:0;border-radius:50%;background:rgba(255,248,225,.85);animation-name:beerRise;animation-timing-function:cubic-bezier(.45,0,.9,.55);animation-iteration-count:infinite;animation-fill-mode:both}
-.beer-head{position:absolute;left:0;right:0;bottom:100%;margin-bottom:-26px;height:14px;background:linear-gradient(180deg,#FFFDF5 0%,#FAF0D4 55%,#EFD596 85%,rgba(239,190,80,0) 100%);animation:beerHead 2.8s cubic-bezier(.5,.05,.25,1) .2s both}
-.beer-head svg{position:absolute;left:-5%;width:110%;top:-10px;height:16px;fill:#FFFDF5;animation:beerWave 3s ease-in-out infinite alternate}
-.splash-brand{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding-top:70px;text-align:center;color:#fff}
-.splash-mark{width:72px;height:72px;animation:rise .7s ease 2.7s both}
-.splash-title{font-size:clamp(36px,9vw,56px);font-weight:800;letter-spacing:-.02em;text-shadow:0 2px 12px rgba(110,50,0,.35);animation:rise .7s ease 2.85s both}
-.splash-title span{color:#0A2A66}
-.splash-tag{font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:#0A2A66;font-weight:800;animation:rise .7s ease 3.1s both}
-@keyframes beerFill{to{height:86%}}
-@keyframes beerHead{to{height:64px}}
-@keyframes beerWave{from{transform:translateX(-2%)}to{transform:translateX(2%)}}
-@keyframes beerRise{0%{transform:translateY(0);opacity:0}8%{opacity:.85}100%{transform:translateY(-90vh);opacity:0}}
-@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-@keyframes splashOut{to{opacity:0;visibility:hidden}}
-@media (prefers-reduced-motion:reduce){.splash,.splash *{animation-duration:.01s!important;animation-delay:0s!important}}
+.eq-table{max-height:460px;overflow:auto}
+.rate-cell{display:grid;grid-template-columns:minmax(80px,1fr) 44px;gap:8px;align-items:center}
+.rate-cell strong{text-align:right}

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const days = [7, 30, 90].includes(rawDays) ? rawDays : 30;
     const sql = db();
 
-    const [summaryRows, statusRows, priorityRows, trendRows, technicianRows, occurrenceRows, importRows, recentRows] = await Promise.all([
+    const [summaryRows, statusRows, priorityRows, trendRows, technicianRows, occurrenceRows, importRows, recentRows, equipmentRows] = await Promise.all([
       sql`SELECT COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status IN ('pending','blocked'))::int AS pending,
         COUNT(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
@@ -37,7 +37,15 @@ export async function GET(request: Request) {
       sql`SELECT category, status, COUNT(*)::int AS count FROM occurrences WHERE created_at >= now() - make_interval(days => ${days}::int) GROUP BY category, status ORDER BY count DESC LIMIT 30`,
       sql`SELECT id, filename, status, total_rows, created_count, updated_count, unchanged_count, error_count, created_at, applied_at
         FROM imports ORDER BY created_at DESC LIMIT 10`,
-      sql`SELECT id, order_number, title, status, priority, assigned_username, updated_at FROM work_orders ORDER BY updated_at DESC LIMIT 8`
+      sql`SELECT id, order_number, title, status, priority, assigned_username, updated_at FROM work_orders ORDER BY updated_at DESC LIMIT 8`,
+      // Equipamentos: frequência de atividades e execução (sem equipamento, usa o local de instalação).
+      sql`SELECT COALESCE(NULLIF(trim(equipment), ''), NULLIF(trim(location), ''), 'Sem equipamento') AS name,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+        COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue,
+        COALESCE(SUM(work_minutes), 0)::int AS minutes
+        FROM work_orders WHERE status <> 'cancelled'
+        GROUP BY 1 ORDER BY total DESC, name LIMIT 200`
     ]);
 
     const summary = summaryRows[0] ?? {};
@@ -52,7 +60,8 @@ export async function GET(request: Request) {
       byTechnician: technicianRows,
       occurrences: occurrenceRows,
       imports: importRows,
-      recentOrders: recentRows
+      recentOrders: recentRows,
+      byEquipment: equipmentRows
     });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });

@@ -42,23 +42,6 @@ function Gauge({value,label}:{value:number;label:string}) {
   const v=Math.max(0,Math.min(100,value)); const r=70, half=Math.PI*r;
   return <div className="gauge"><svg viewBox="0 0 180 105" role="img" aria-label={`${label}: ${v}%`}><path d="M20 95 A70 70 0 0 1 160 95" fill="none" stroke="var(--line)" strokeWidth="18" strokeLinecap="round"/><path d="M20 95 A70 70 0 0 1 160 95" fill="none" stroke="url(#gaugeGrad)" strokeWidth="18" strokeLinecap="round" strokeDasharray={`${v/100*half} ${half}`} className="gauge-arc"/><defs><linearGradient id="gaugeGrad" x1="0" x2="1"><stop offset="0" stopColor={PAL.gold}/><stop offset="1" stopColor={PAL.navy}/></linearGradient></defs><text x="90" y="88" textAnchor="middle" className="donut-num">{v}%</text></svg><span className="muted">{label}</span></div>;
 }
-// Abertura: o chopp sobe e enche a tela; depois aparece a marca.
-const BUBBLES = [7,18,29,41,52,63,74,85,94].flatMap((x,k)=>[0,1,2,3].map(i=>({x,s:1.4+((k*7+i*3)%10)/7,d:2.4+(k%3)*.5,delay:.4+i*.6+((k+i)%4)*.08})));
-function Splash({onDone}:{onDone:()=>void}) {
-  // Mostra a abertura completa uma vez por sessão do navegador.
-  useEffect(()=>{let seen=false;try{seen=Boolean(sessionStorage.getItem("gera-splash"));sessionStorage.setItem("gera-splash","1");}catch{}const t=setTimeout(onDone,seen?0:5300);return()=>clearTimeout(t);},[onDone]);
-  return <div className="splash" onClick={onDone} role="presentation">
-    <div className="beer"><div className="beer-light"/>
-      {BUBBLES.map((b,i)=><span key={i} className="beer-bubble" style={{left:`${b.x}%`,width:b.s,height:b.s,animationDuration:`${b.d}s`,animationDelay:`${b.delay}s`}}/>)}
-      <div className="beer-head"><svg viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path d="M0 24 C150 10 300 10 450 22 C600 34 750 32 900 20 C1020 10 1120 12 1200 20 V40 H0Z"/></svg></div>
-    </div>
-    <div className="splash-brand">
-      <svg className="splash-mark" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" fill="none" stroke="#0A2A66" strokeWidth="8"/><path d="M38 62 L54 78 L84 44" fill="none" stroke="#fff" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/></svg>
-      <div className="splash-title">Gera <span>Atividade</span></div>
-      <div className="splash-tag">Planeje · Execute · Conclua</div>
-    </div>
-  </div>;
-}
 const Brand = () => <div className="brand">Gera <span className="brand-sub">Atividade</span><span style={{color:"var(--gold)"}}>.</span></div>;
 const NAV = [["dashboard","Dashboard",true],["placar","Placar",true],["allocation","Alocação",false],["indicators","Indicadores",false],["orders","Atividades",false],["users","Pessoas e acessos",true],["import","Importar planilha",true],["security","Minha senha",false]];
 const STATUS_LABEL: Record<string,string> = { pending:"Pendente", in_progress:"Em andamento", completed:"Concluída", blocked:"Bloqueada", cancelled:"Cancelada" };
@@ -76,7 +59,7 @@ const shiftDay = (iso:string|undefined, days:number) => { const d = new Date((is
 const allocClass = (m:number) => m === 0 ? "alloc-nok" : m < 360 ? "alloc-low" : m > 480 ? "alloc-high" : "alloc-ok";
 type Summary = { realized?:number; merged?:number; total:number; new:number; changed:number; unchanged:number; existing:number; notInFile:number; completedPreserved:number; preview:Array<Record<string,unknown>> };
 type Allocation = { periodDays:number; daily:Array<{day:string;minutes:number;orders:number}>; people:Array<{name:string;minutes:number;orders:number}>; totals:{minutes:number;orders:number;days:number} };
-type Analytics = { periodDays:number; summary:Record<string,number>; byStatus:Array<{status:string;count:number}>; byPriority:Array<{priority:string;count:number}>; trend:Array<{day:string;created:number;completed:number}>; byTechnician:Array<{username:string;total:number;completed:number;pending:number;overdue:number}>; occurrences:Array<{category:string;status:string;count:number}>; imports:Array<Record<string,unknown>>; recentOrders:Array<Record<string,unknown>> };
+type Analytics = { periodDays:number; summary:Record<string,number>; byStatus:Array<{status:string;count:number}>; byPriority:Array<{priority:string;count:number}>; trend:Array<{day:string;created:number;completed:number}>; byTechnician:Array<{username:string;total:number;completed:number;pending:number;overdue:number}>; occurrences:Array<{category:string;status:string;count:number}>; imports:Array<Record<string,unknown>>; recentOrders:Array<Record<string,unknown>>; byEquipment?:Array<{name:string;total:number;completed:number;overdue:number;minutes:number}> };
 
 export default function Home() {
   const [user,setUser] = useState<Profile|null>(null);
@@ -114,6 +97,8 @@ export default function Home() {
   const [minutesEdit,setMinutesEdit] = useState<Record<string,string>>({});
   const [undoExclude,setUndoExclude] = useState<{username:string;name:string;orderIds:string[]}|null>(null);
   const [notes,setNotes] = useState<Record<string,string>>({});
+  const [eqSearch,setEqSearch] = useState("");
+  const [eqSort,setEqSort] = useState<"total"|"rate"|"overdue">("total");
   const [assignEdit,setAssignEdit] = useState<Record<string,string>>({});
   const [people,setPeople] = useState<{people:SheetPerson[];users:AppUser[]}|null>(null);
   const [report,setReport] = useState<PersonReport|null>(null);
@@ -122,8 +107,6 @@ export default function Home() {
   const [periodDays,setPeriodDays] = useState(30);
   const [analyticsBusy,setAnalyticsBusy] = useState(false);
   const [ready,setReady] = useState(false);
-  const [splash,setSplash] = useState(true);
-  const endSplash = useCallback(()=>setSplash(false),[]);
 
   const load = useCallback(async (afterLogin = false) => {
     const me = await fetch("/api/me");
@@ -397,7 +380,6 @@ export default function Home() {
     } catch(e){setError(e instanceof Error?e.message:"Falha ao processar planilha.");}
     finally{setBusy(false);}
   }
-  if(splash) return <Splash onDone={endSplash}/>;
   if(!ready) return <main className="shell"><div className="panel">Carregando Gera Atividade…</div></main>;
   if(!user) return <main className="shell" style={{maxWidth:480,paddingTop:"10vh"}}>
     <header className="header"><div><Brand/><div className="muted">Gestão de atividades e ordens do dia</div></div></header>
@@ -493,6 +475,20 @@ export default function Home() {
         <div className="panel stack chart-card"><div className="spread"><h2>Desempenho por responsável</h2><div className="legend"><span><i className="legend-dot" style={{background:PAL.navy}}/>Concluídas</span><span><i className="legend-dot" style={{background:PAL.gold}}/>Pendentes</span><span><i className="legend-dot" style={{background:PAL.red}}/>Atrasadas</span></div></div>{analytics.byTechnician.length===0?<p className="muted">Nenhuma atribuição encontrada.</p>:<Stacked rows={analytics.byTechnician.slice(0,12).map(t=>({label:t.username,parts:[{name:"Concluídas",value:Number(t.completed),color:PAL.navy},{name:"Pendentes",value:Math.max(0,Number(t.pending)-Number(t.overdue)),color:PAL.gold},{name:"Atrasadas",value:Number(t.overdue),color:PAL.red}]}))}/>}</div>
         <div className="panel stack chart-card"><h2>Ocorrências por categoria</h2>{occ.length===0?<p className="muted">Nenhuma ocorrência no período.</p>:<Donut data={occ.map((o,i)=>({...o,color:occColors[i%occColors.length]}))} center={String(occ.reduce((a2,d)=>a2+d.value,0))} sub="ocorrências"/>}</div>
       </div></>;})()}
+      {(()=>{const eqs=(analytics.byEquipment??[]).map(e=>({...e,rate:pct(e.completed,e.total)}));const q=eqSearch.trim().toLowerCase();
+        const list=eqs.filter(e=>!q||e.name.toLowerCase().includes(q)).sort((x,y)=>eqSort==="rate"?y.rate-x.rate||y.total-x.total:eqSort==="overdue"?y.overdue-x.overdue||y.total-x.total:y.total-x.total);
+        const tot=eqs.reduce((a2,e)=>a2+e.total,0), done=eqs.reduce((a2,e)=>a2+e.completed,0);
+        const rateColor=(r:number)=>r>=80?PAL.navy:r>=50?PAL.blue:r>=25?PAL.gold:PAL.red;
+        return <div className="panel stack chart-card"><div className="spread"><div><h2>Equipamentos</h2><p className="muted">Frequência de atividades e porcentagem de execução por equipamento (sem equipamento, usa o local de instalação).</p></div>
+          <div className="row"><input className="field" type="search" placeholder="Buscar equipamento…" aria-label="Buscar equipamento" value={eqSearch} onChange={e=>setEqSearch(e.target.value)}/><select className="field period-select" aria-label="Ordenar equipamentos" value={eqSort} onChange={e=>setEqSort(e.target.value as "total"|"rate"|"overdue")}><option value="total">Mais atividades</option><option value="rate">Maior execução</option><option value="overdue">Mais atrasadas</option></select></div></div>
+          {eqs.length===0?<p className="muted">Nenhum equipamento nas atividades.</p>:<>
+          <div className="grid kpi-grid"><div className="panel kpi"><span className="muted">Equipamentos</span><strong className="stats">{eqs.length}</strong></div><div className="panel kpi"><span className="muted">Atividades</span><strong className="stats">{tot}</strong><span className="kpi-note">média de {(tot/eqs.length).toLocaleString("pt-BR",{maximumFractionDigits:1})} por equipamento</span></div><div className="panel kpi"><span className="muted">Execução geral</span><strong className="stats">{pct(done,tot)}%</strong><span className="kpi-note">{done} de {tot} executadas</span></div></div>
+          <div className="analytics-columns">
+            <div className="stack"><h3 className="subsection-title">Top 10 · frequência</h3><Stacked rows={[...eqs].sort((x,y)=>y.total-x.total).slice(0,10).map(e=>({label:e.name,parts:[{name:"Executadas",value:e.completed,color:PAL.navy},{name:"Pendentes",value:Math.max(0,e.total-e.completed-e.overdue),color:PAL.gold},{name:"Atrasadas",value:e.overdue,color:PAL.red}]}))}/><div className="legend"><span><i className="legend-dot" style={{background:PAL.navy}}/>Executadas</span><span><i className="legend-dot" style={{background:PAL.gold}}/>Pendentes</span><span><i className="legend-dot" style={{background:PAL.red}}/>Atrasadas</span></div></div>
+            <div className="stack"><h3 className="subsection-title">Execução</h3><Donut data={[{label:"Executadas",value:done,color:PAL.navy},{label:"Pendentes",value:tot-done-eqs.reduce((a2,e)=>a2+e.overdue,0),color:PAL.gold},{label:"Atrasadas",value:eqs.reduce((a2,e)=>a2+e.overdue,0),color:PAL.red}]} center={`${pct(done,tot)}%`} sub="executado"/></div>
+          </div>
+          <div className="table-wrap eq-table"><table><thead><tr><th>Equipamento</th><th className="num">Atividades</th><th className="num">Executadas</th><th className="num">Atrasadas</th><th className="num">Horas</th><th>% execução</th></tr></thead><tbody>{list.map(e=><tr key={e.name}><td>{e.name}</td><td className="num">{e.total}</td><td className="num">{e.completed}</td><td className="num">{e.overdue}</td><td className="num">{hours(e.minutes)}</td><td><div className="rate-cell"><div className="bar-track"><div className="bar" style={{width:`${e.rate}%`,background:rateColor(e.rate)}}/></div><strong>{e.rate}%</strong></div></td></tr>)}{list.length===0&&<tr><td colSpan={6} className="muted">Nenhum equipamento encontrado para “{eqSearch}”.</td></tr>}</tbody></table></div></>}
+        </div>;})()}
       <div className="analytics-columns">
         <div className="panel stack"><h2>Importações recentes</h2>{analytics.imports.length===0?<p className="muted">Nenhuma importação registrada.</p>:<div className="table-wrap"><table><thead><tr><th>Arquivo</th><th>Status</th><th>Linhas</th><th>Novas</th><th>Alteradas</th><th>Erros</th></tr></thead><tbody>{analytics.imports.map((item,i)=><tr key={String(item.id??i)}><td>{String(item.filename??"—")}</td><td>{String(item.status??"—")}</td><td>{String(item.total_rows??0)}</td><td>{String(item.created_count??0)}</td><td>{String(item.updated_count??0)}</td><td>{String(item.error_count??0)}</td></tr>)}</tbody></table></div>}</div>
         <div className="panel stack"><h2>Atividades atualizadas recentemente</h2>{analytics.recentOrders.length===0?<p className="muted">Nenhuma atividade registrada.</p>:analytics.recentOrders.map((o,i)=><div className="recent-order" key={String(o.id??i)}><div className="spread"><strong>{String(o.order_number||"Sem número")}</strong><span className={"status-pill status-"+String(o.status)}>{({"pending":"Pendente","in_progress":"Em andamento","completed":"Concluída","blocked":"Bloqueada","cancelled":"Cancelada"} as Record<string,string>)[String(o.status)]||String(o.status)}</span></div><div>{String(o.title)}</div><small className="block-muted">{String(o.assigned_username||"Não atribuído")} · {String(o.priority)}</small></div>)}</div>
