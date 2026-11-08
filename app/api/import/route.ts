@@ -48,6 +48,18 @@ function parseDate(value: unknown): string | null {
   m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
+// Tempo de trabalho: "60", "60 min", "1:20", "1:20h", "1h20", "1,5h" ou célula de hora do Excel → minutos.
+function parseMinutes(value: unknown): number {
+  if (value == null || value === "") return 0;
+  if (value instanceof Date) return value.getUTCHours() * 60 + value.getUTCMinutes() + Math.round(value.getUTCSeconds() / 60);
+  if (typeof value === "number") return value;
+  const t = String(value).trim().toLowerCase().replace(/\s+/g, "");
+  let m = t.match(/^(\d+):(\d{1,2})(?::\d{1,2})?h?$/); if (m) return Number(m[1]) * 60 + Number(m[2]);
+  m = t.match(/^(\d+)h(\d{1,2})(?:min|m)?$/); if (m) return Number(m[1]) * 60 + Number(m[2]);
+  m = t.match(/^(\d+(?:[.,]\d+)?)(h|hr|hrs|horas?)$/); if (m) return Number(m[1].replace(",", ".")) * 60;
+  m = t.match(/^(\d+(?:[.,]\d+)?)(min|mins|minutos?|m)?$/); if (m) return Number(m[1].replace(",", "."));
+  return Number.NaN;
+}
 function parseRows(buffer: Buffer): ImportRow[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const first = workbook.SheetNames[0];
@@ -64,9 +76,8 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const priorityRaw = pick(r, ["prioridade", "criticidade"]).toLowerCase();
     const priority: ImportRow["priority"] = /crit|urgente/.test(priorityRaw) ? "critical" : /alta|high/.test(priorityRaw) ? "high" : /baixa|low/.test(priorityRaw) ? "low" : "normal";
     const scheduled_for = parseDate(pickRaw(r, ["data", "data prevista", "prazo", "scheduled for"]));
-    const workRaw = pick(r, ["trabalho", "trabalh", "trab", "tempo de trabalho", "tempo", "minutos", "work minutes"]);
-    const workMinutes = workRaw ? Number(workRaw.replace(",", ".")) : 0;
-    if (!Number.isFinite(workMinutes) || workMinutes < 0) throw new Error(`Linha ${index + 2}: Trabalho deve ser informado em minutos válidos.`);
+    const workMinutes = parseMinutes(pickRaw(r, ["trabalho", "trabalh", "trab", "tempo de trabalho", "tempo", "minutos", "work minutes"]));
+    if (!Number.isFinite(workMinutes) || workMinutes < 0) throw new Error(`Linha ${index + 2}: tempo de trabalho inválido (use minutos, ex.: 60, ou horas, ex.: 1:20).`);
     // Coluna Status: "Realizado" conclui a atividade; "Pendente" (ou vazio) segue o fluxo normal.
     const statusRaw = normalizedKey(pick(r, ["status", "situação", "situacao", "status da ordem"]));
     const done = /^(realizad|concluid|executad|finalizad|feito)/.test(statusRaw);
@@ -75,9 +86,18 @@ function parseRows(buffer: Buffer): ImportRow[] {
     const external_key = order ? `os:${order.toLowerCase()}` : `hash:${createHash("sha256").update(stable.toLowerCase()).digest("hex").slice(0,32)}`;
     return { external_key, order_number: order || null, title, description: description || null, location: location || null, equipment: equipment || null, assigned_username: technician ? usernameFromDisplayName(technician) : null, priority, scheduled_for, work_minutes: Math.round(workMinutes), done, source_data: { ...r, __gera: { name: technician, indicator: indicatorOf(r), week: pick(r, ["semana", "sem"]).toUpperCase(), group: groupOf(r), work_center: pick(r, ["centrab respons", "centrab respons.", "centro de trabalho", "centro trabalho", "cen trab", "centrab", "work center"]), work_minutes: Math.round(workMinutes) } } };
   });
-  const seen = new Set<string>();
-  for (const row of rows) { if (seen.has(row.external_key)) throw new Error(`A planilha contém identificador duplicado: ${row.order_number ?? row.title}.`); seen.add(row.external_key); }
-  return rows;
+  // Atividades iguais (mesma ordem ou mesma atividade/local) viram uma só, somando o tempo.
+  // A atividade juntada só fica concluída se todas as linhas estiverem "Realizado".
+  const merged = new Map<string, ImportRow>();
+  for (const row of rows) {
+    const prev = merged.get(row.external_key);
+    if (!prev) { merged.set(row.external_key, row); continue; }
+    prev.work_minutes += row.work_minutes;
+    prev.done = prev.done && row.done;
+    const g = prev.source_data.__gera as Record<string, unknown>;
+    g.work_minutes = prev.work_minutes; g.merged_rows = Number(g.merged_rows ?? 1) + 1;
+  }
+  return [...merged.values()];
 }
 
 export async function POST(request: Request) {
@@ -116,6 +136,7 @@ export async function POST(request: Request) {
       : await sql`SELECT count(*)::int AS count FROM work_orders`;
     const summary = {
       total: rows.length,
+      merged: rows.reduce((a, r) => a + Number((r.source_data.__gera as Record<string, unknown>).merged_rows ?? 1) - 1, 0),
       new: rows.filter(r => actions.get(r.external_key) === "new").length,
       changed: rows.filter(r => actions.get(r.external_key) === "changed").length,
       unchanged: rows.filter(r => actions.get(r.external_key) === "unchanged").length,
@@ -143,7 +164,7 @@ export async function POST(request: Request) {
     }
     statements.push(sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'orders.imported', 'import', ${importId}, ${JSON.stringify({ filename: file.name, total: rows.length, new: summary.new, changed: summary.changed, unchanged: summary.unchanged, notInFile: summary.notInFile })}::jsonb)`);
     await sql.transaction(statements);
-    return NextResponse.json({ summary, importId, message: (summary.realized ? `${summary.realized} atividade(s) com status "Realizado" foram concluídas. ` : "") + "Importação aplicada. Ordens concluídas tiveram seu status preservado; itens ausentes no arquivo não foram excluídos." });
+    return NextResponse.json({ summary, importId, message: (summary.merged ? `${summary.merged} linha(s) repetida(s) foram juntadas, somando o tempo. ` : "") + (summary.realized ? `${summary.realized} atividade(s) com status "Realizado" foram concluídas. ` : "") + "Importação aplicada. Ordens concluídas tiveram seu status preservado; itens ausentes no arquivo não foram excluídos." });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha na importação." }, { status: 400 });
