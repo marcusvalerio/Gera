@@ -42,15 +42,21 @@ function Gauge({value,label}:{value:number;label:string}) {
   const v=Math.max(0,Math.min(100,value)); const r=70, half=Math.PI*r;
   return <div className="gauge"><svg viewBox="0 0 180 105" role="img" aria-label={`${label}: ${v}%`}><path d="M20 95 A70 70 0 0 1 160 95" fill="none" stroke="var(--line)" strokeWidth="18" strokeLinecap="round"/><path d="M20 95 A70 70 0 0 1 160 95" fill="none" stroke="url(#gaugeGrad)" strokeWidth="18" strokeLinecap="round" strokeDasharray={`${v/100*half} ${half}`} className="gauge-arc"/><defs><linearGradient id="gaugeGrad" x1="0" x2="1"><stop offset="0" stopColor={PAL.gold}/><stop offset="1" stopColor={PAL.navy}/></linearGradient></defs><text x="90" y="88" textAnchor="middle" className="donut-num">{v}%</text></svg><span className="muted">{label}</span></div>;
 }
+// Abertura: o chopp sobe e enche a tela; depois aparece a marca.
+const BUBBLES = [7,18,29,41,52,63,74,85,94].flatMap((x,k)=>[0,1,2,3].map(i=>({x,s:1.4+((k*7+i*3)%10)/7,d:2.4+(k%3)*.5,delay:.4+i*.6+((k+i)%4)*.08})));
 function Splash({onDone}:{onDone:()=>void}) {
   // Mostra a abertura completa uma vez por sessão do navegador.
-  useEffect(()=>{let seen=false;try{seen=Boolean(sessionStorage.getItem("gera-splash"));sessionStorage.setItem("gera-splash","1");}catch{}const t=setTimeout(onDone,seen?0:2600);return()=>clearTimeout(t);},[onDone]);
+  useEffect(()=>{let seen=false;try{seen=Boolean(sessionStorage.getItem("gera-splash"));sessionStorage.setItem("gera-splash","1");}catch{}const t=setTimeout(onDone,seen?0:5300);return()=>clearTimeout(t);},[onDone]);
   return <div className="splash" onClick={onDone} role="presentation">
-    <div className="splash-glow"/>
-    <svg className="splash-mark" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" className="splash-ring"/><path d="M38 62 L54 78 L84 44" className="splash-check"/></svg>
-    <div className="splash-title"><span className="splash-gera">Gera</span> <span className="splash-ativ">Atividade</span></div>
-    <div className="splash-tag">Planeje · Execute · Conclua</div>
-    <div className="splash-bar"><span/></div>
+    <div className="beer"><div className="beer-light"/>
+      {BUBBLES.map((b,i)=><span key={i} className="beer-bubble" style={{left:`${b.x}%`,width:b.s,height:b.s,animationDuration:`${b.d}s`,animationDelay:`${b.delay}s`}}/>)}
+      <div className="beer-head"><svg viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path d="M0 24 C150 10 300 10 450 22 C600 34 750 32 900 20 C1020 10 1120 12 1200 20 V40 H0Z"/></svg></div>
+    </div>
+    <div className="splash-brand">
+      <svg className="splash-mark" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" fill="none" stroke="#0A2A66" strokeWidth="8"/><path d="M38 62 L54 78 L84 44" fill="none" stroke="#fff" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      <div className="splash-title">Gera <span>Atividade</span></div>
+      <div className="splash-tag">Planeje · Execute · Conclua</div>
+    </div>
   </div>;
 }
 const Brand = () => <div className="brand">Gera <span className="brand-sub">Atividade</span><span style={{color:"var(--gold)"}}>.</span></div>;
