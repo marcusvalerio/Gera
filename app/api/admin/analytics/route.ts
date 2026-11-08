@@ -28,7 +28,7 @@ export async function GET(request: Request) {
         FROM generate_series(CURRENT_DATE - make_interval(days => ${days}::int - 1), CURRENT_DATE, interval '1 day') AS d(day)
         LEFT JOIN work_orders w ON w.created_at::date = d.day OR w.completed_at::date = d.day
         GROUP BY d.day ORDER BY d.day`,
-      sql`SELECT COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') AS username,
+      sql`SELECT COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') AS username, MAX(assigned_username) AS login,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
         COUNT(*) FILTER (WHERE status IN ('pending','blocked'))::int AS pending,

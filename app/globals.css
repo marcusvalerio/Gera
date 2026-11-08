@@ -276,3 +276,59 @@ th{background:#FAF8F3}
 table.alloc thead th{background:#FAF8F3}
 .splash-barley .bx-stem{stroke-width:1.2}
 .header .brand{font-size:24px}.header .brand-mark{width:42px;height:42px}
+
+/* ===== Paleta final: marinho, gelo e ouro ===== */
+:root{--bg:#F4F6FA;--text:#0B1F3F;--muted:#5F6878;--line:#E1E6EF;--accent:#0B1F3F;--accent-hover:#06152E;--accent-soft:#FBF1D2;--navy:#0B1F3F;--coal:#0B1F3F;--malt:#F4F6FA}
+.field{border-color:#CFD6E2}.btn.ghost{border-color:#CFD6E2}
+.btn.secondary:hover,.btn.ghost:hover{background:#E9EDF4}
+.link{color:#1E4E9A;text-decoration-color:#F2B705}
+th,table.alloc thead th{background:#F7F9FC}
+.bar-track{background:#E9EDF4}.tag{background:#E9EDF4}
+.kpi{border-top-color:#0B1F3F}.kpi:nth-child(2){border-top-color:#1E4E9A}.kpi:nth-child(4){border-top-color:#8FB3E8}
+.donut-num{fill:#0B1F3F}
+.tag-p3m{background:#0B1F3F;color:#F2B705}
+.alloc-day.today{background:#0B1F3F!important}
+.brand{color:#0B1F3F}.brand .brand-sub{color:#5F6878}.brand-dark .brand-sub{color:#AFBBD1}
+.sidebar-head{border-bottom-color:#1B3561}.sidebar-head .muted,.user-card .muted{color:#8FA0BD}
+.side-link{color:#CFD6E2}.side-link:hover,.side-link.active,.sidebar .btn.ghost:hover{background:#14305C}
+.sidebar-foot{border-top-color:#1B3561}
+.sidebar .btn.ghost,.menu-btn{border-color:#2B4A7E}
+.created-bar,.created-dot{background:#8FB3E8}.completed-bar,.completed-dot{background:#0B1F3F}
+.alloc-low{background:#DCE7F8;color:#0B1F3F}
+.splash-name{background:linear-gradient(180deg,rgba(11,31,63,0),var(--coal) 55%)}
+.splash-word span{color:#C9D3E6}
+/* ===== Dashboard organizado ===== */
+.kpi-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.kpi-btn{text-align:left;font:inherit;color:inherit;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
+.kpi-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(11,31,63,.1)}
+.kpi-btn:focus-visible{outline:3px solid #F2B70588;outline-offset:2px}
+.kpi-btn .kpi-note span{color:#B9830A;font-weight:700}
+.dash-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.dash-tab{border:0;background:none;padding:10px 16px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.dash-tab.active{color:#0B1F3F;border-bottom-color:#F2B705}
+.chip-row{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;color:#0B1F3F}
+.chip:hover{border-color:#0B1F3F}.chip i{width:9px;height:9px;border-radius:50%}
+.missing-card{border-left:4px solid #F2B705;flex-wrap:wrap}
+.click-table tbody tr{cursor:pointer}.click-table tbody tr:hover{background:#F7F9FC}
+.click-bars{display:flex;flex-direction:column;gap:2px}
+.click-bars button{border:0;background:none;padding:4px 6px;border-radius:8px;text-align:left;font:inherit;color:inherit}
+.click-bars button:hover{background:#F7F9FC}
+@media(max-width:1200px){.kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ===== Filtros e edição em Atividades ===== */
+.filter-bar{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:8px}
+@media(max-width:600px){.filter-bar{grid-template-columns:1fr}}
+.filter-chip-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.filter-chip{display:inline-flex;align-items:center;gap:8px;background:#0B1F3F;color:#fff;border-radius:999px;padding:6px 8px 6px 14px;font-size:13px}
+.filter-chip b{color:#F2B705}
+.filter-chip button{border:0;background:#1B3561;color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px}
+.tag-missing{background:#FBF1D2;color:#7A5800;font-weight:600}
+.edit-btn{align-self:flex-start;margin-top:4px}
+.edit-form{background:#F7F9FC;border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.edit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.edit-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.edit-grid .span2{grid-column:span 2}
+@media(max-width:700px){.edit-grid{grid-template-columns:1fr 1fr}.edit-grid .span2{grid-column:span 2}}
+.order-item>.btn.danger{align-self:flex-start}
+.sidebar .brand-mark,.topbar .brand-mark{width:36px;height:36px;margin-top:-10px}
