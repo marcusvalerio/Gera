@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Gera — Ordens do Dia",
+  title: "Gera Atividade",
   description: "Gestão de ordens de serviço, atividades e ocorrências.",
 };
 
