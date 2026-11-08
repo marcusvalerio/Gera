@@ -19,7 +19,8 @@ function Bars({rows}:{rows:Array<{label:string;value:number;cls:string}>}) {
   return <div className="hbars">{rows.map(r=><div className="hbar" key={r.label}><span>{r.label}</span><div className="bar-track"><div className={"bar "+r.cls} style={{width:`${r.value/max*100}%`}}/></div><strong>{r.value}</strong></div>)}</div>;
 }
 // Paleta inspirada nas cores Ambev (azul-marinho, azul, dourado).
-const PAL = { navy:"#0A2A66", blue:"#1E5AA8", sky:"#4FA3E0", gold:"#F5B400", amber:"#E58A00", red:"#D7262E", grey:"#9AA3B2", green:"#2E9E5B" };
+// Paleta gera.atividade: carvão, malte e ouro (as chaves antigas mantêm o papel de cada cor nos gráficos).
+const PAL = { navy:"#1C1B19", blue:"#6B655A", sky:"#C9BC9C", gold:"#F2B705", amber:"#B9830A", red:"#C2412D", grey:"#A8A39A", green:"#3F7D4E" };
 const STATUS_COLOR: Record<string,string> = { pending:PAL.gold, in_progress:PAL.sky, completed:PAL.navy, blocked:PAL.red, cancelled:PAL.grey };
 const PRIORITY_COLOR: Record<string,string> = { critical:PAL.red, urgent:PAL.red, high:PAL.amber, normal:PAL.blue, low:PAL.sky };
 function Donut({data,center,sub}:{data:Array<{label:string;value:number;color:string}>;center:string;sub:string}) {
@@ -42,7 +43,38 @@ function Gauge({value,label}:{value:number;label:string}) {
   const v=Math.max(0,Math.min(100,value)); const r=70, half=Math.PI*r;
   return <div className="gauge"><svg viewBox="0 0 180 105" role="img" aria-label={`${label}: ${v}%`}><path d="M20 95 A70 70 0 0 1 160 95" fill="none" stroke="var(--line)" strokeWidth="18" strokeLinecap="round"/><path d="M20 95 A70 70 0 0 1 160 95" fill="none" stroke="url(#gaugeGrad)" strokeWidth="18" strokeLinecap="round" strokeDasharray={`${v/100*half} ${half}`} className="gauge-arc"/><defs><linearGradient id="gaugeGrad" x1="0" x2="1"><stop offset="0" stopColor={PAL.gold}/><stop offset="1" stopColor={PAL.navy}/></linearGradient></defs><text x="90" y="88" textAnchor="middle" className="donut-num">{v}%</text></svg><span className="muted">{label}</span></div>;
 }
-const Brand = () => <div className="brand">Gera <span className="brand-sub">Atividade</span><span style={{color:"var(--gold)"}}>.</span></div>;
+// Símbolo: espiga de cevada curvada (talo, grãos e as "barbas" longas).
+const BARLEY_STEM = [[56,140],[56,100],[64,62],[94,30]] as const;
+function barleyPoint(t:number) {
+  const [a,b,c,d] = BARLEY_STEM, u = 1-t;
+  const x = u*u*u*a[0]+3*t*u*u*b[0]+3*t*t*u*c[0]+t*t*t*d[0], y = u*u*u*a[1]+3*t*u*u*b[1]+3*t*t*u*c[1]+t*t*t*d[1];
+  const dx = 3*u*u*(b[0]-a[0])+6*u*t*(c[0]-b[0])+3*t*t*(d[0]-c[0]), dy = 3*u*u*(b[1]-a[1])+6*u*t*(c[1]-b[1])+3*t*t*(d[1]-c[1]);
+  return { x, y, a: Math.atan2(dx,-dy)*180/Math.PI };
+}
+const BARLEY_GRAINS = (() => {
+  const g:Array<{x:number;y:number;r:number}> = [];
+  [0.42,0.52,0.62,0.71,0.80,0.88].forEach(t=>{ const p=barleyPoint(t), r=p.a*Math.PI/180, nx=Math.cos(r), ny=Math.sin(r);
+    g.push({x:p.x-5.5*nx,y:p.y-5.5*ny,r:p.a-24}); g.push({x:p.x+5.5*nx,y:p.y+5.5*ny,r:p.a+24}); });
+  const p=barleyPoint(1), r=p.a*Math.PI/180; g.push({x:p.x+3*Math.sin(r),y:p.y-3*Math.cos(r),r:p.a});
+  return g;
+})();
+function Barley({stem="#F4F1EA",grain="#F2B705",awns=true,animated=false,className,style}:{stem?:string;grain?:string;awns?:boolean;animated?:boolean;className?:string;style?:React.CSSProperties}) {
+  return <svg viewBox="0 0 140 140" aria-hidden="true" className={className} style={{overflow:"visible",...style}}>
+    <path className={animated?"bx-stem":undefined} pathLength={1} d="M56 140 C56 100 64 62 94 30" fill="none" stroke={stem} strokeWidth={2.4} strokeLinecap="round"/>
+    {BARLEY_GRAINS.map((g,k)=><g key={k} transform={`translate(${g.x.toFixed(1)} ${g.y.toFixed(1)}) rotate(${g.r.toFixed(1)})`}><g className={animated?"bx-grain":undefined} style={animated?{animationDelay:`${(0.32+k*0.045).toFixed(2)}s`}:undefined}>
+      {awns&&<path d="M0 -8 L0 -34" stroke={grain} strokeOpacity={0.7} strokeWidth={0.9} strokeLinecap="round"/>}
+      <path d="M0 -8.5 C5.2 -5.5 6 3.5 0 8.5 C-6 3.5 -5.2 -5.5 0 -8.5Z" fill={grain}/></g></g>)}
+  </svg>;
+}
+const Brand = ({dark=false}:{dark?:boolean}) => <div className={"brand"+(dark?" brand-dark":"")}><Barley className="brand-mark" stem={dark?"#F4F1EA":"#141413"} awns={false}/><span>gera<b>.</b><span className="brand-sub">atividade</span></span></div>;
+// Abertura: no login ou na primeira abertura do dia; ~2 s.
+function Splash({force,onDone}:{force:boolean;onDone:()=>void}) {
+  useEffect(()=>{const day=new Date().toLocaleDateString("en-CA");let seen=false;try{seen=localStorage.getItem("gera-splash-day")===day;localStorage.setItem("gera-splash-day",day);}catch{}const t=setTimeout(onDone,seen&&!force?0:2150);return()=>clearTimeout(t);},[force,onDone]);
+  return <div className="splash" onClick={onDone} role="presentation">
+    <Barley animated className="splash-barley"/>
+    <div className="splash-name"><div className="splash-word">gera<b>.</b><span>atividade</span></div></div>
+  </div>;
+}
 const NAV = [["dashboard","Dashboard",true],["placar","Placar",true],["allocation","Alocação",false],["indicators","Indicadores",false],["orders","Atividades",false],["users","Pessoas e acessos",true],["import","Importar planilha",true],["security","Minha senha",false]];
 const STATUS_LABEL: Record<string,string> = { pending:"Pendente", in_progress:"Em andamento", completed:"Concluída", blocked:"Bloqueada", cancelled:"Cancelada" };
 const PRIORITY_LABEL: Record<string,string> = { low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente", critical:"Crítica" };
@@ -107,6 +139,8 @@ export default function Home() {
   const [periodDays,setPeriodDays] = useState(30);
   const [analyticsBusy,setAnalyticsBusy] = useState(false);
   const [ready,setReady] = useState(false);
+  const [splash,setSplash] = useState<"auto"|"force"|null>("auto");
+  const endSplash = useCallback(()=>setSplash(null),[]);
 
   const load = useCallback(async (afterLogin = false) => {
     const me = await fetch("/api/me");
@@ -154,7 +188,7 @@ export default function Home() {
         if (local.includes(".")) result = await authClient.signIn.email({ email: loginEmail(local), password });
       }
       if (result.error) throw new Error(username.includes("@") ? "Login ou senha inválidos. Use o login no formato nome.sobrenome." : "Login ou senha inválidos.");
-      setPassword(""); await load(true);
+      setPassword(""); setSplash("force"); await load(true);
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível entrar."); }
     finally { setBusy(false); }
   }
@@ -380,11 +414,12 @@ export default function Home() {
     } catch(e){setError(e instanceof Error?e.message:"Falha ao processar planilha.");}
     finally{setBusy(false);}
   }
-  if(!ready) return <main className="shell"><div className="panel">Carregando Gera Atividade…</div></main>;
+  if(splash) return <Splash force={splash==="force"} onDone={endSplash}/>;
+  if(!ready) return <main className="shell"><div className="panel">Carregando gera.atividade…</div></main>;
   if(!user) return <main className="shell" style={{maxWidth:480,paddingTop:"10vh"}}>
     <header className="header"><div><Brand/><div className="muted">Gestão de atividades e ordens do dia</div></div></header>
     <section className="panel stack">{setupRequired?<><div><h1>Configuração inicial</h1><p className="muted">Crie a conta do administrador principal. Este formulário desaparece após a configuração inicial.</p></div>
-      <form className="stack" onSubmit={bootstrap}><div><label className="label">Nome completo</label><input className="field" autoComplete="name" value={setupName} onChange={e=>setSetupName(e.target.value)} placeholder="Seu nome e sobrenome" required /></div><div><label className="label">E-mail do administrador</label><input className="field" type="email" autoComplete="email" value={setupEmail} onChange={e=>setSetupEmail(e.target.value)} required /></div><div><label className="label">Senha inicial (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={setupPassword} onChange={e=>setSetupPassword(e.target.value)} required /></div><div><label className="label">Código de configuração</label><input className="field" type="password" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Configurando…":"Criar administrador principal"}</button></form><p className="muted">Antes de abrir o sistema, configure GERA_BOOTSTRAP_SECRET na Vercel com um segredo aleatório de pelo menos 20 caracteres. Você poderá entrar usando seu e-mail ou o login gerado pelo nome.</p></>:<><div><h1>Entrar no Gera Atividade</h1><p className="muted">Use o login no formato <b>nome.sobrenome</b> (ex.: anderson.motta), não o seu e-mail pessoal.</p></div>
+      <form className="stack" onSubmit={bootstrap}><div><label className="label">Nome completo</label><input className="field" autoComplete="name" value={setupName} onChange={e=>setSetupName(e.target.value)} placeholder="Seu nome e sobrenome" required /></div><div><label className="label">E-mail do administrador</label><input className="field" type="email" autoComplete="email" value={setupEmail} onChange={e=>setSetupEmail(e.target.value)} required /></div><div><label className="label">Senha inicial (mínimo 12 caracteres)</label><input className="field" type="password" autoComplete="new-password" minLength={12} value={setupPassword} onChange={e=>setSetupPassword(e.target.value)} required /></div><div><label className="label">Código de configuração</label><input className="field" type="password" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Configurando…":"Criar administrador principal"}</button></form><p className="muted">Antes de abrir o sistema, configure GERA_BOOTSTRAP_SECRET na Vercel com um segredo aleatório de pelo menos 20 caracteres. Você poderá entrar usando seu e-mail ou o login gerado pelo nome.</p></>:<><div><h1>Entrar</h1><p className="muted">Use o login no formato <b>nome.sobrenome</b> (ex.: anderson.motta), não o seu e-mail pessoal.</p></div>
       <form className="stack" onSubmit={signIn}><div><label className="label">Login</label><input className="field" autoComplete="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="nome.sobrenome" required /></div><div><label className="label">Senha</label><input className="field" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required /></div><button className="btn" disabled={busy}>{busy?"Entrando…":"Entrar"}</button></form><p className="muted">O acesso é criado por um administrador. Não há cadastro público.</p></>}</section>
     {error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}
 </main>;
@@ -395,10 +430,10 @@ export default function Home() {
   const go = (t:typeof tab) => { setTab(t); setMenuOpen(false); setError(""); setMessage(""); if(t==="dashboard"||t==="placar") void loadAnalytics(); if(t==="allocation") void loadWeek(week?.start); if(t==="indicators") void loadIndicators(); if(t==="users") void loadPeople(); if(t==="import"&&user?.role==="super_admin") void loadImports(); };
   const navItems = (NAV as Array<[typeof tab,string,boolean]>).filter(([, ,adminOnly])=>admin||!adminOnly);
   return <div className="app">
-    <div className="topbar"><Brand/><button className="menu-btn" aria-label="Abrir menu" onClick={()=>setMenuOpen(true)}><span/><span/><span/></button></div>
+    <div className="topbar"><Brand dark/><button className="menu-btn" aria-label="Abrir menu" onClick={()=>setMenuOpen(true)}><span/><span/><span/></button></div>
     {menuOpen&&<div className="backdrop" onClick={()=>setMenuOpen(false)}/>}
     <aside className={"sidebar"+(menuOpen?" open":"")}>
-      <div className="sidebar-head"><Brand/><div className="muted">Gestão de atividades</div></div>
+      <div className="sidebar-head"><Brand dark/><div className="muted">Gestão de atividades</div></div>
       <nav className="side-nav">{navItems.map(([key,label])=><button key={key} className={"side-link"+((current===key||(key==="users"&&current==="person"))?" active":"")} onClick={()=>go(key)}>{label}</button>)}</nav>
       <div className="sidebar-foot"><div className="user-card"><strong>{user.display_name}</strong><span className="muted">{user.role==="super_admin"?"Administrador principal":admin?"Administrador":"Técnico"} · {user.username}</span></div><button className="btn ghost full" onClick={signOut}>Sair</button></div>
     </aside>
