@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const user = await requireUser();
     const rows = user.role === "technician"
-      ? await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes, sap_created, sap_closed,
+      ? await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes, sap_created, sap_closed, work_minutes,
         COALESCE(NULLIF(source_data->'__gera'->>'week', ''), NULL) AS week,
         COALESCE(NULLIF(source_data->'__gera'->>'indicator', ''), 'FORA P3M') AS indicator,
         NULLIF(source_data->'__gera'->>'group', '') AS grp,
@@ -14,7 +14,7 @@ export async function GET() {
            FROM order_events e LEFT JOIN app_users u ON u.auth_user_id = e.actor_auth_user_id
           WHERE e.work_order_id = work_orders.id AND e.event_type = 'schedule.changed') AS date_history
         FROM work_orders WHERE assigned_username = ${user.username} ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`
-      : await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes, sap_created, sap_closed,
+      : await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes, sap_created, sap_closed, work_minutes,
         COALESCE(NULLIF(source_data->'__gera'->>'week', ''), NULL) AS week,
         COALESCE(NULLIF(source_data->'__gera'->>'indicator', ''), 'FORA P3M') AS indicator,
         NULLIF(source_data->'__gera'->>'group', '') AS grp,
@@ -33,7 +33,8 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const user = await requireUser();
-    const body = await request.json() as { id?: string; notes?: string; sapClosed?: boolean };
+    const body = await request.json() as { id?: string; notes?: string; sapClosed?: boolean; edit?: Record<string, unknown> };
+    if (body.id && body.edit && typeof body.edit === "object") return editOrder(user, body.id, body.edit);
     if (body.id && typeof body.sapClosed === "boolean") {
       const found = await db()`SELECT assigned_username FROM work_orders WHERE id = ${body.id} LIMIT 1`;
       if (!found.length) return NextResponse.json({ error: "Ordem não encontrada." }, { status: 404 });
@@ -92,4 +93,29 @@ export async function DELETE(request: Request) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });
     return NextResponse.json({ error: "Falha ao excluir a atividade." }, { status: 500 });
   }
+}
+
+// Edição das informações da atividade (administradores): completa data, local, tempo etc.
+async function editOrder(user: Awaited<ReturnType<typeof requireUser>>, id: string, e: Record<string, unknown>) {
+  if (user.role === "technician") return NextResponse.json({ error: "Somente administradores podem editar as informações." }, { status: 403 });
+  const text = (v: unknown, max = 300) => { const t = String(v ?? "").trim(); return t ? t.slice(0, max) : null; };
+  const day = text(e.day, 10);
+  if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return NextResponse.json({ error: "Data inválida." }, { status: 400 });
+  const minutes = e.minutes === "" || e.minutes == null ? 0 : Number(e.minutes);
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) return NextResponse.json({ error: "Tempo inválido: minutos inteiros de 0 a 1440." }, { status: 400 });
+  const title = text(e.title, 300);
+  if (!title) return NextResponse.json({ error: "Informe a descrição da atividade." }, { status: 400 });
+  const priority = ["low", "normal", "high", "critical"].includes(String(e.priority)) ? String(e.priority) : "normal";
+  const sql = db();
+  const found = await sql`SELECT status, to_char(scheduled_for, 'YYYY-MM-DD') AS day FROM work_orders WHERE id = ${id} LIMIT 1`;
+  if (!found.length) return NextResponse.json({ error: "Atividade não encontrada." }, { status: 404 });
+  if (found[0].status === "completed") return NextResponse.json({ error: "Atividade já concluída. Não pode mais ser alterada." }, { status: 409 });
+  const gera = { week: (text(e.week, 20) ?? "").toUpperCase(), indicator: e.indicator === "P3M" ? "P3M" : "FORA P3M", group: text(e.group, 40) ?? "", work_minutes: minutes };
+  await sql`UPDATE work_orders SET order_number = ${text(e.orderNumber, 60)}, title = ${title}, location = ${text(e.location)}, equipment = ${text(e.equipment)},
+      scheduled_for = ${day}, work_minutes = ${minutes}, priority = ${priority},
+      source_data = jsonb_set(COALESCE(source_data, '{}'::jsonb), '{__gera}', COALESCE(source_data->'__gera', '{}'::jsonb) || ${JSON.stringify(gera)}::jsonb), updated_at = now()
+    WHERE id = ${id}`;
+  await sql`INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details) VALUES (${id}, 'order.edited', ${user.auth_user_id}, ${JSON.stringify(e)}::jsonb)`;
+  if ((found[0].day ?? null) !== day && day) await sql`INSERT INTO order_events (work_order_id, event_type, actor_auth_user_id, details) VALUES (${id}, 'schedule.changed', ${user.auth_user_id}, ${JSON.stringify({ from: found[0].day, to: day })}::jsonb)`;
+  return NextResponse.json({ ok: true });
 }
