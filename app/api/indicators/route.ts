@@ -21,7 +21,7 @@ export async function GET(request: Request) {
         w.status <> 'completed' AND w.scheduled_for < (now() AT TIME ZONE 'America/Sao_Paulo')::date AS late,
         w.status = 'completed' AND w.scheduled_for IS NOT NULL AND (w.completed_at AT TIME ZONE 'America/Sao_Paulo')::date <= w.scheduled_for AS on_time,
         w.scheduled_for IS NOT NULL AND w.scheduled_for <= (now() AT TIME ZONE 'America/Sao_Paulo')::date AS due
-      FROM work_orders w WHERE w.status <> 'cancelled' ${period})`;
+      FROM work_orders w WHERE w.status <> 'cancelled' AND w.archived_month IS NULL ${period})`;
     const [groups, p3m, weeks, weekPeople, workCenters] = await Promise.all([
       sql.query(`${cte} SELECT grp AS name, count(*) FILTER (WHERE NOT done AND NOT late)::int AS open, count(*) FILTER (WHERE done)::int AS done,
         count(*) FILTER (WHERE late)::int AS late, COALESCE(sum(work_minutes), 0)::int AS minutes FROM o GROUP BY grp ORDER BY grp`),
