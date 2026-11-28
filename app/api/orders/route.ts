@@ -13,7 +13,7 @@ export async function GET() {
         (SELECT COALESCE(json_agg(json_build_object('from', e.details->>'from', 'to', e.details->>'to', 'by', COALESCE(u.display_name, '—'), 'at', e.created_at) ORDER BY e.created_at DESC), '[]'::json)
            FROM order_events e LEFT JOIN app_users u ON u.auth_user_id = e.actor_auth_user_id
           WHERE e.work_order_id = work_orders.id AND e.event_type = 'schedule.changed') AS date_history
-        FROM work_orders WHERE assigned_username = ${user.username} ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`
+        FROM work_orders WHERE assigned_username = ${user.username} AND archived_month IS NULL ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`
       : await db()`SELECT id, external_key, order_number, title, description, location, equipment, priority, status, assigned_username, scheduled_for, completed_at, notes, sap_created, sap_closed, work_minutes,
         COALESCE(NULLIF(source_data->'__gera'->>'week', ''), NULL) AS week,
         COALESCE(NULLIF(source_data->'__gera'->>'indicator', ''), 'FORA P3M') AS indicator,
@@ -21,7 +21,7 @@ export async function GET() {
         (SELECT COALESCE(json_agg(json_build_object('from', e.details->>'from', 'to', e.details->>'to', 'by', COALESCE(u.display_name, '—'), 'at', e.created_at) ORDER BY e.created_at DESC), '[]'::json)
            FROM order_events e LEFT JOIN app_users u ON u.auth_user_id = e.actor_auth_user_id
           WHERE e.work_order_id = work_orders.id AND e.event_type = 'schedule.changed') AS date_history
-        FROM work_orders ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`;
+        FROM work_orders WHERE archived_month IS NULL ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, scheduled_for NULLS LAST, created_at DESC LIMIT 500`;
     return NextResponse.json({ orders: rows });
   } catch (error) {
     if (error instanceof Response) return NextResponse.json({ error: await error.text() }, { status: error.status });

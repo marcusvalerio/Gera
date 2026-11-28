@@ -18,33 +18,34 @@ export async function GET(request: Request) {
         COUNT(*) FILTER (WHERE status = 'blocked')::int AS blocked,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue,
         COUNT(*) FILTER (WHERE created_at >= now() - make_interval(days => ${days}::int))::int AS created_in_period,
-        COUNT(*) FILTER (WHERE completed_at >= now() - make_interval(days => ${days}::int))::int AS completed_in_period
-        FROM work_orders`,
-      sql`SELECT status, COUNT(*)::int AS count FROM work_orders GROUP BY status ORDER BY count DESC`,
-      sql`SELECT priority, COUNT(*)::int AS count FROM work_orders WHERE status NOT IN ('completed','cancelled') GROUP BY priority ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`,
+        COUNT(*) FILTER (WHERE completed_at >= now() - make_interval(days => ${days}::int))::int AS completed_in_period,
+        (SELECT COUNT(*) FROM work_orders a WHERE a.archived_month IS NOT NULL AND a.status = 'completed')::int AS archived_done
+        FROM work_orders WHERE archived_month IS NULL`,
+      sql`SELECT status, COUNT(*)::int AS count FROM work_orders WHERE archived_month IS NULL GROUP BY status ORDER BY count DESC`,
+      sql`SELECT priority, COUNT(*)::int AS count FROM work_orders WHERE archived_month IS NULL AND status NOT IN ('completed','cancelled') GROUP BY priority ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`,
       sql`SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
         COUNT(w.id) FILTER (WHERE w.created_at::date = d.day)::int AS created,
         COUNT(w.id) FILTER (WHERE w.completed_at::date = d.day)::int AS completed
         FROM generate_series(CURRENT_DATE - make_interval(days => ${days}::int - 1), CURRENT_DATE, interval '1 day') AS d(day)
-        LEFT JOIN work_orders w ON w.created_at::date = d.day OR w.completed_at::date = d.day
+        LEFT JOIN work_orders w ON w.archived_month IS NULL AND (w.created_at::date = d.day OR w.completed_at::date = d.day)
         GROUP BY d.day ORDER BY d.day`,
       sql`SELECT COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') AS username, MAX(assigned_username) AS login,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
         COUNT(*) FILTER (WHERE status IN ('pending','blocked'))::int AS pending,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue
-        FROM work_orders GROUP BY COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') ORDER BY completed DESC, total DESC LIMIT 20`,
+        FROM work_orders WHERE archived_month IS NULL GROUP BY COALESCE(NULLIF(source_data->'__gera'->>'name', ''), assigned_username, 'Não atribuído') ORDER BY completed DESC, total DESC LIMIT 20`,
       sql`SELECT category, status, COUNT(*)::int AS count FROM occurrences WHERE created_at >= now() - make_interval(days => ${days}::int) GROUP BY category, status ORDER BY count DESC LIMIT 30`,
       sql`SELECT id, filename, status, total_rows, created_count, updated_count, unchanged_count, error_count, created_at, applied_at
         FROM imports ORDER BY created_at DESC LIMIT 10`,
-      sql`SELECT id, order_number, title, status, priority, assigned_username, updated_at FROM work_orders ORDER BY updated_at DESC LIMIT 8`,
+      sql`SELECT id, order_number, title, status, priority, assigned_username, updated_at FROM work_orders WHERE archived_month IS NULL ORDER BY updated_at DESC LIMIT 8`,
       // Equipamentos: frequência de atividades e execução (sem equipamento, usa o local de instalação).
       sql`SELECT COALESCE(NULLIF(trim(equipment), ''), NULLIF(trim(location), ''), 'Sem equipamento') AS name,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue,
         COALESCE(SUM(work_minutes), 0)::int AS minutes
-        FROM work_orders WHERE status <> 'cancelled'
+        FROM work_orders WHERE archived_month IS NULL AND status <> 'cancelled'
         GROUP BY 1 ORDER BY total DESC, name LIMIT 200`
     ]);
 

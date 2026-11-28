@@ -75,7 +75,7 @@ function Splash({force,onDone}:{force:boolean;onDone:()=>void}) {
     <div className="splash-name"><div className="splash-word">gera<b>.</b><span>atividade</span></div></div>
   </div>;
 }
-const NAV = [["dashboard","Dashboard",true],["placar","Placar",true],["allocation","Alocação",false],["indicators","Indicadores",false],["orders","Atividades",false],["users","Pessoas e acessos",true],["import","Importar planilha",true],["security","Minha senha",false]];
+const NAV = [["dashboard","Dashboard",true],["placar","Placar",true],["allocation","Alocação",false],["indicators","Indicadores",false],["orders","Atividades",false],["users","Pessoas e acessos",true],["months","Meses fechados",true],["import","Importar planilha",true],["security","Minha senha",false]];
 const STATUS_LABEL: Record<string,string> = { pending:"Pendente", in_progress:"Em andamento", completed:"Concluída", blocked:"Bloqueada", cancelled:"Cancelada" };
 const PRIORITY_LABEL: Record<string,string> = { low:"Baixa", normal:"Normal", high:"Alta", urgent:"Urgente", critical:"Crítica" };
 type Profile = { username:string; display_name:string; role:"super_admin"|"admin"|"technician"; must_change_password:boolean };
@@ -100,6 +100,12 @@ type Summary = { realized?:number; merged?:number; total:number; new:number; cha
 type Allocation = { periodDays:number; daily:Array<{day:string;minutes:number;orders:number}>; people:Array<{name:string;minutes:number;orders:number}>; totals:{minutes:number;orders:number;days:number} };
 type Analytics = { periodDays:number; summary:Record<string,number>; byStatus:Array<{status:string;count:number}>; byPriority:Array<{priority:string;count:number}>; trend:Array<{day:string;created:number;completed:number}>; byTechnician:Array<{username:string;login?:string|null;total:number;completed:number;pending:number;overdue:number}>; occurrences:Array<{category:string;status:string;count:number}>; imports:Array<Record<string,unknown>>; recentOrders:Array<Record<string,unknown>>; byEquipment?:Array<{name:string;total:number;completed:number;overdue:number;minutes:number}> };
 
+type MonthRow = {month:string;done:number;minutes:number;p3m:number;on_time:number;people:number};
+type MonthsData = {current:MonthRow;months:MonthRow[];pending:Array<{month:string;count:number}>};
+type MonthDetail = {month:string;people:Array<{name:string;done:number;minutes:number}>;orders:Array<{id:string;order_number:string|null;title:string;location:string|null;person:string;day:string|null;completed_at:string|null;work_minutes:number;indicator:string}>};
+const MONTH_NAMES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+function monthName(m:string) { const [y,mm] = m.split("-"); return `${MONTH_NAMES[Number(mm)-1]??mm}/${y}`; }
+
 export default function Home() {
   const [user,setUser] = useState<Profile|null>(null);
   const [orders,setOrders] = useState<Order[]>([]);
@@ -120,7 +126,10 @@ export default function Home() {
   const [message,setMessage] = useState("");
   const [error,setError] = useState("");
   const [busy,setBusy] = useState(false);
-  const [tab,setTab] = useState<"dashboard"|"placar"|"allocation"|"indicators"|"orders"|"import"|"users"|"security"|"person">("dashboard");
+  const [tab,setTab] = useState<"dashboard"|"placar"|"allocation"|"indicators"|"orders"|"import"|"users"|"security"|"person"|"months">("dashboard");
+  const [months,setMonths] = useState<MonthsData|null>(null);
+  const [monthView,setMonthView] = useState<MonthDetail|null>(null);
+  const [archForm,setArchForm] = useState<{from:string;to:string}|null>(null);
   const [menuOpen,setMenuOpen] = useState(false);
   const [week,setWeek] = useState<WeekData|null>(null);
   const [cell,setCell] = useState<{username:string;day:string}|null>(null);
@@ -356,6 +365,54 @@ export default function Home() {
       setEditing(null); setMessage("Informações da atividade salvas."); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao salvar."); } finally { setBusy(false); }
   }
+  async function loadMonths() {
+    const res = await fetch("/api/admin/archive"); const data = await res.json();
+    if (res.ok) setMonths(data); else setError(data.error || "Falha ao carregar os meses fechados.");
+  }
+  async function openMonth(m:string) {
+    setError(""); const res = await fetch(`/api/admin/archive?month=${m}`); const data = await res.json();
+    if (res.ok) setMonthView(data); else setError(data.error || "Falha ao abrir o mês.");
+  }
+  async function closeMonth() {
+    const n = months?.pending.reduce((a,p)=>a+p.count,0) ?? 0;
+    if (!window.confirm(`Fechar o mês? ${n} atividade(s) concluída(s) antes deste mês saem da folha atual e ficam guardadas em "Meses fechados" para consulta. As pendentes continuam na folha nova.`)) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/archive",{method:"POST"}); const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha ao fechar o mês.");
+      setMessage(`Mês fechado: ${data.archived} atividade(s) arquivada(s). Folha nova aberta.`); await Promise.all([load(), loadMonths()]);
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha ao fechar o mês."); } finally { setBusy(false); }
+  }
+  async function archivePeriod() {
+    if (!archForm) return;
+    if (!archForm.from || !archForm.to || archForm.from > archForm.to) { setError("Escolha a data inicial e a final do período."); return; }
+    const br = (d:string)=>d.split("-").reverse().join("/");
+    if (!window.confirm(`Arquivar as atividades concluídas de ${br(archForm.from)} a ${br(archForm.to)}? Elas saem da folha atual e ficam em "Meses fechados" para consulta.`)) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/archive",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(archForm)}); const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha ao arquivar.");
+      setMessage(`${data.archived} atividade(s) concluída(s) arquivada(s).`); setArchForm(null);
+      await Promise.all([load(), loadAnalytics(), current==="months"?loadMonths():Promise.resolve()]);
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha ao arquivar."); } finally { setBusy(false); }
+  }
+  function archiveBox() {
+    if (user?.role!=="super_admin") return null;
+    const today = new Date().toLocaleDateString("sv-SE",{timeZone:"America/Sao_Paulo"});
+    if (!archForm) return <button className="btn secondary" onClick={()=>setArchForm({from:today.slice(0,8)+"01",to:today})}>Arquivar atividades</button>;
+    return <form className="panel row" onSubmit={e=>{e.preventDefault();void archivePeriod();}}><strong>Arquivar concluídas no período</strong><label className="move">De<input className="field" type="date" value={archForm.from} max={archForm.to||undefined} onChange={e=>setArchForm(f=>f&&{...f,from:e.target.value})}/></label><label className="move">Até<input className="field" type="date" value={archForm.to} min={archForm.from||undefined} onChange={e=>setArchForm(f=>f&&{...f,to:e.target.value})}/></label><button className="btn" disabled={busy}>Arquivar</button><button type="button" className="btn ghost" onClick={()=>setArchForm(null)}>Cancelar</button></form>;
+  }
+  async function changeMonth(m:string, action:"reopen"|"delete") {
+    const label = monthName(m);
+    if (!window.confirm(action==="reopen" ? `Reabrir ${label}? As atividades voltam para a folha atual.` : `Excluir DE VEZ as atividades concluídas de ${label}? Informações e ocorrências também serão apagadas. Não dá para desfazer.`)) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const res = await fetch(`/api/admin/archive?month=${m}${action==="reopen"?"&action=reopen":""}`,{method:"DELETE"}); const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha ao alterar o mês.");
+      setMessage(action==="reopen" ? `${label} reaberto: ${data.reopened} atividade(s) de volta.` : `${label} excluído: ${data.deleted} atividade(s) apagada(s).`);
+      setMonthView(null); await Promise.all([load(), loadMonths()]);
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha ao alterar o mês."); } finally { setBusy(false); }
+  }
   async function loadImports() {
     const res = await fetch("/api/import"); const data = await res.json();
     if (res.ok) setImports(data.imports); else setError(data.error || "Falha ao carregar as planilhas.");
@@ -450,7 +507,7 @@ export default function Home() {
 
   const admin = user.role!=="technician";
   const current = admin ? tab : (tab==="security"||tab==="allocation"||tab==="indicators"?tab:"orders");
-  const go = (t:typeof tab) => { if(t==="orders") setOrdFilter(null); setTab(t); setMenuOpen(false); setError(""); setMessage(""); if(t==="dashboard"||t==="placar") void loadAnalytics(); if(t==="allocation") void loadWeek(week?.start); if(t==="indicators") void loadIndicators(); if(t==="users") void loadPeople(); if(t==="import"&&user?.role==="super_admin") void loadImports(); };
+  const go = (t:typeof tab) => { if(t==="orders") setOrdFilter(null); setTab(t); setMenuOpen(false); setError(""); setMessage(""); if(t==="dashboard"||t==="placar") void loadAnalytics(); if(t==="allocation") void loadWeek(week?.start); if(t==="indicators") void loadIndicators(); if(t==="users") void loadPeople(); if(t==="months") { setMonthView(null); void loadMonths(); } if(t==="import"&&user?.role==="super_admin") void loadImports(); };
   const shownOrders = orders.filter(o=>{
     const f = ordFilter;
     if (f?.status && !f.status.includes(o.status)) return false;
@@ -535,7 +592,9 @@ export default function Home() {
         const occColors=[PAL.navy,PAL.blue,PAL.sky,PAL.gold,PAL.amber,PAL.red];
         const onTime=Number(sm.total)?Math.round(100*(Number(sm.total)-Number(sm.overdue))/Number(sm.total)):0;
         const legendStd=<div className="legend"><span><i className="legend-dot" style={{background:PAL.navy}}/>Concluídas</span><span><i className="legend-dot" style={{background:PAL.gold}}/>Pendentes</span><span><i className="legend-dot" style={{background:PAL.red}}/>Atrasadas</span></div>;
+        const archived=Number(sm.archived_done??0), fresh=Number(sm.completed??0);
         return <>
+        <div className="panel spread"><div className="row"><div><span className="muted">Feitas no total</span><strong className="stats">{archived+fresh}</strong></div><div><span className="muted">Arquivadas</span><strong className="stats">{archived}</strong></div><div><span className="muted">Novas (folha atual)</span><strong className="stats">{fresh}</strong></div></div><div className="row">{archiveBox()}<button className="btn sm ghost" onClick={()=>go("months")}>Ver arquivadas →</button></div></div>
         <div className="kpi-row">{kpis.map(k=><button key={k.label} type="button" className={"panel kpi kpi-btn"+(k.cls??"")} onClick={()=>drill(k.f)}><span className="muted">{k.label}</span><strong className="stats">{k.value}</strong><span className="kpi-note">{k.note} <span aria-hidden="true">→</span></span></button>)}</div>
         <div className="dash-tabs" role="tablist">{([["geral","Visão geral"],["equipe","Equipe"],["equipamentos","Equipamentos"],["historico","Histórico"]] as const).map(([k,l])=><button key={k} role="tab" aria-selected={dashTab===k} className={"dash-tab"+(dashTab===k?" active":"")} onClick={()=>setDashTab(k)}>{l}</button>)}</div>
         {dashTab==="geral"&&<>
@@ -613,6 +672,23 @@ export default function Home() {
             </div>
             <div className="row"><button className="btn sm" disabled={busy}>{busy?"Salvando…":"Salvar informações"}</button><button type="button" className="btn sm ghost" onClick={()=>setEditing(null)}>Cancelar</button></div>
           </form>:<button type="button" className="btn sm secondary edit-btn" onClick={()=>startEdit(o)}>Editar informações</button>)}{admin&&(o.status==="completed"?o.assigned_username&&<div className="order-meta">Responsável: {o.assigned_username}</div>:<form className="assign-edit" onSubmit={e=>{e.preventDefault();void changeAssignee(o.id,assignEdit[o.id]??"",o.order_number||o.title);}}><label className="move">Responsável<input className="field" list="ord-people" placeholder="nome.sobrenome" value={assignEdit[o.id]??o.assigned_username??""} onChange={e=>setAssignEdit(a=>({...a,[o.id]:e.target.value}))}/></label>{assignEdit[o.id]!==undefined&&assignEdit[o.id].trim()!==(o.assigned_username??"")&&<button className="btn sm">Trocar responsável</button>}</form>)}{o.sap_created!=null&&<div className={o.sap_created?"sap-yes":"sap-no"}>{o.sap_created?"✓ Ordem criada no SAP":"✗ Ordem não criada no SAP"}</div>}{o.status!=="completed"?<label className="move">Data de execução<input className="field" type="date" value={o.scheduled_for?.slice(0,10)??""} onChange={e=>e.target.value&&void changeOrderDate(o,e.target.value)}/></label>:o.scheduled_for&&<div className="order-meta">Data: {new Date(o.scheduled_for.slice(0,10)+"T12:00:00").toLocaleDateString("pt-BR")}</div>}{o.date_history?.length>0&&<details className="date-history"><summary>Histórico de datas ({o.date_history.length})</summary><ul>{o.date_history.map((h,k)=><li key={k}>{fmtDay(h.from)} → {fmtDay(h.to)} · {h.by} · {new Date(h.at).toLocaleString("pt-BR")}</li>)}</ul></details>}<div className="order-notes"><textarea className="field" rows={2} maxLength={1000} placeholder="Informações sobre a atividade…" value={notes[o.id]??o.notes??""} onChange={e=>setNotes({...notes,[o.id]:e.target.value})}/>{notes[o.id]!==undefined&&notes[o.id]!==(o.notes??"")&&<button className="btn sm" onClick={()=>void saveNotes(o)}>Salvar informações</button>}</div></div>{o.status!=="completed"&&<div className="order-actions">{o.status!=="in_progress"&&<button className="btn sm secondary" onClick={()=>void updateStatus(o,"in_progress")}>Iniciar</button>}<button className="btn sm" onClick={()=>void updateStatus(o,"completed")}>Concluir</button>{o.status!=="blocked"&&<button className="btn sm ghost" onClick={()=>void updateStatus(o,"blocked")}>Bloquear</button>}<button className="btn sm ghost" onClick={()=>void reportOccurrence(o)}>Ocorrência</button></div>}{o.status==="completed"&&<div className="order-actions"><SapLink label="Dar baixa no SAP" question="Deu baixa no SAP?" value={o.sap_closed} onAnswer={v=>void setSapClosed(o,v)}/><span className="locked">Concluída · bloqueada para edição</span></div>}{user.role==="super_admin"&&<button className="btn sm ghost danger" onClick={()=>void deleteOrder(o)}>Excluir</button>}</li>;})}</ul>}</section>}
+    {admin&&current==="months"&&<section className="panel stack"><h2>Meses fechados</h2><p className="muted">Fechar o mês tira da folha atual as atividades concluídas em meses anteriores e guarda cada uma no mês em que foi concluída. As pendentes continuam. Os meses fechados ficam aqui para consulta e comparação.</p>
+      {!months?<p className="muted">Carregando…</p>:<>
+        {archiveBox()}
+        {user.role==="super_admin"&&<div className="notice spread"><span>{months.pending.length?`Prontas para fechar: ${months.pending.map(p=>`${monthName(p.month)} (${p.count})`).join(", ")}.`:"Nenhuma atividade concluída de meses anteriores na folha atual."}</span><button className="btn" disabled={busy||!months.pending.length} onClick={()=>void closeMonth()}>Fechar mês e abrir folha nova</button></div>}
+        <div className="table-wrap"><table><thead><tr><th>Mês</th><th>Concluídas</th><th>Variação</th><th>Tempo</th><th>No prazo</th><th>P3M</th><th>Pessoas</th><th></th></tr></thead><tbody>
+          {[{...months.current,current:true},...months.months.map(m=>({...m,current:false}))].map((m,i,all)=>{const prev=all[i+1];const diff=prev&&prev.done?Math.round((m.done-prev.done)/prev.done*100):null;return <tr key={m.month}>
+            <td><strong>{monthName(m.month)}</strong>{m.current&&<div className="muted">mês atual (aberto)</div>}</td><td>{m.done}</td>
+            <td>{diff===null?"—":<span style={{color:diff>=0?"var(--ok, #2e7d32)":"var(--danger, #c62828)"}}>{diff>0?"+":""}{diff}%</span>}</td>
+            <td>{formatMinutes(m.minutes)}</td><td>{m.done?Math.round(m.on_time/m.done*100):0}%</td><td>{m.p3m}</td><td>{m.people}</td>
+            <td>{!m.current&&<div className="row"><button className="btn sm secondary" onClick={()=>void openMonth(m.month)}>Consultar</button>{user.role==="super_admin"&&<><button className="btn sm ghost" disabled={busy} onClick={()=>void changeMonth(m.month,"reopen")}>Reabrir</button><button className="btn sm ghost danger" disabled={busy} onClick={()=>void changeMonth(m.month,"delete")}>Excluir</button></>}</div>}</td></tr>;})}
+        </tbody></table></div>
+        {monthView&&<div className="stack"><div className="spread"><h2 className="subsection-title">{monthName(monthView.month)} · {monthView.orders.length} atividade(s)</h2><button className="btn sm ghost" onClick={()=>setMonthView(null)}>Fechar</button></div>
+          <div className="table-wrap"><table><thead><tr><th>Pessoa</th><th>Concluídas</th><th>Tempo</th></tr></thead><tbody>{monthView.people.map(p=><tr key={p.name}><td>{p.name}</td><td>{p.done}</td><td>{formatMinutes(p.minutes)}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>Ordem</th><th>Atividade</th><th>Pessoa</th><th>Programada</th><th>Concluída</th><th>Tempo</th><th>Indicador</th></tr></thead><tbody>{monthView.orders.map(o=><tr key={o.id}><td>{o.order_number||"—"}</td><td>{o.title}{o.location?<div className="muted">{o.location}</div>:null}</td><td>{o.person}</td><td>{o.day?o.day.split("-").reverse().join("/"):"—"}</td><td>{o.completed_at?new Date(o.completed_at).toLocaleDateString("pt-BR"):"—"}</td><td>{formatMinutes(o.work_minutes)}</td><td>{o.indicator}</td></tr>)}</tbody></table></div>
+        </div>}
+      </>}
+    </section>}
     {admin&&current==="import"&&<section className="panel stack"><h2>Importar atividades</h2><p className="muted">Envie uma planilha .xlsx, .xls ou .csv. Primeiro vamos validar e mostrar a prévia; nada muda até você confirmar.</p><input className="field" type="file" accept=".xlsx,.xls,.csv" onChange={e=>{setFile(e.target.files?.[0]??null);setSummary(null)}}/><div className="row"><button className="btn secondary" disabled={busy||!file} onClick={()=>void importFile(false)}>Analisar planilha</button>{summary&&<button className="btn" disabled={busy||!file} onClick={()=>void importFile(true)}>Confirmar importação</button>}</div>{summary&&<><div className="grid"><div><div className="muted">Linhas</div><div className="stats">{summary.total}</div></div><div><div className="muted">Novas</div><div className="stats">{summary.new}</div></div><div><div className="muted">Alteradas</div><div className="stats">{summary.changed}</div></div></div><div className="notice">{summary.completedPreserved} ordem(ns) já concluídas serão mantidas como concluídas.{summary.realized?` ${summary.realized} atividade(s) com status “Realizado” serão concluídas automaticamente.`:""}{summary.merged?` ${summary.merged} linha(s) repetida(s) serão juntadas, somando o tempo.`:""} Status “Pendente” segue o fluxo normal.</div><p className="muted">{summary.unchanged} sem alteração · {summary.notInFile} ordens existentes não aparecem nesta planilha e não serão excluídas.</p><div className="table-wrap"><table><thead><tr><th>Ação</th><th>Ordem</th><th>Atividade</th><th>Responsável</th><th>Prioridade</th></tr></thead><tbody>{summary.preview.map((r,i)=><tr key={i}><td>{String(r.action)}</td><td>{String(r.order||"—")}</td><td>{String(r.title)}</td><td>{String(r.assigned||"—")}</td><td>{String(r.priority)}</td></tr>)}</tbody></table></div></>}{user.role==="super_admin"&&<div className="stack"><h2 className="subsection-title">Planilhas enviadas</h2>{!imports?<p className="muted">Carregando…</p>:imports.length===0?<p className="muted">Nenhuma planilha aplicada.</p>:<ul className="plain-list">{imports.map(i=><li key={i.id} className="spread"><div><strong>{i.filename}</strong><div className="muted">{new Date(i.applied_at||i.created_at).toLocaleString("pt-BR")} · {i.orders} atividade(s), {i.removable} não concluída(s)</div></div><button className="btn sm ghost danger" onClick={()=>void deleteImport(i)}>Excluir planilha</button></li>)}</ul>}</div>}</section>}
     {admin&&current==="users"&&<section className="stack">
       <div className="dashboard-heading"><h1>Pessoas e acessos</h1><p className="muted">Pessoas que aparecem na planilha e quem já tem acesso ao Gera. Clique em um nome para ver o relatório.</p></div>
