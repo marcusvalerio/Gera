@@ -56,10 +56,22 @@ export async function GET(request: Request) {
 
 // Fecha o mês: arquiva as atividades concluídas antes do mês atual (cada uma no mês em que foi concluída).
 // As pendentes continuam na folha nova.
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const actor = await requireAdmin(true);
     const sql = db();
+    const body = await request.json().catch(() => ({})) as { from?: string; to?: string };
+    const DAY = /^\d{4}-\d{2}-\d{2}$/;
+    if (body.from || body.to) {
+      // Período escolhido: arquiva as concluídas entre as datas (inclusive), inclusive do mês atual.
+      if (!body.from || !body.to || !DAY.test(body.from) || !DAY.test(body.to) || body.from > body.to) return NextResponse.json({ error: "Informe um período válido (data inicial e final)." }, { status: 400 });
+      const rows = await sql`UPDATE work_orders SET archived_month = to_char(completed_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM'), archived_at = now()
+        WHERE archived_month IS NULL AND status = 'completed' AND completed_at IS NOT NULL
+          AND (completed_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN ${body.from}::date AND ${body.to}::date
+        RETURNING archived_month`;
+      await sql`INSERT INTO audit_logs (actor_auth_user_id, action, entity_type, entity_id, details) VALUES (${actor.auth_user_id}, 'orders.archived', 'work_order', NULL, ${JSON.stringify({ archived: rows.length, from: body.from, to: body.to })}::jsonb)`;
+      return NextResponse.json({ archived: rows.length });
+    }
     const rows = await sql`UPDATE work_orders SET archived_month = to_char(completed_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM'), archived_at = now()
       WHERE archived_month IS NULL AND status = 'completed' AND completed_at IS NOT NULL
         AND (completed_at AT TIME ZONE 'America/Sao_Paulo') < date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')

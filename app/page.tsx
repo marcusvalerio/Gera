@@ -129,6 +129,7 @@ export default function Home() {
   const [tab,setTab] = useState<"dashboard"|"placar"|"allocation"|"indicators"|"orders"|"import"|"users"|"security"|"person"|"months">("dashboard");
   const [months,setMonths] = useState<MonthsData|null>(null);
   const [monthView,setMonthView] = useState<MonthDetail|null>(null);
+  const [archForm,setArchForm] = useState<{from:string;to:string}|null>(null);
   const [menuOpen,setMenuOpen] = useState(false);
   const [week,setWeek] = useState<WeekData|null>(null);
   const [cell,setCell] = useState<{username:string;day:string}|null>(null);
@@ -382,6 +383,25 @@ export default function Home() {
       setMessage(`Mês fechado: ${data.archived} atividade(s) arquivada(s). Folha nova aberta.`); await Promise.all([load(), loadMonths()]);
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao fechar o mês."); } finally { setBusy(false); }
   }
+  async function archivePeriod() {
+    if (!archForm) return;
+    if (!archForm.from || !archForm.to || archForm.from > archForm.to) { setError("Escolha a data inicial e a final do período."); return; }
+    const br = (d:string)=>d.split("-").reverse().join("/");
+    if (!window.confirm(`Arquivar as atividades concluídas de ${br(archForm.from)} a ${br(archForm.to)}? Elas saem da folha atual e ficam em "Meses fechados" para consulta.`)) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/archive",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(archForm)}); const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha ao arquivar.");
+      setMessage(`${data.archived} atividade(s) concluída(s) arquivada(s).`); setArchForm(null);
+      await Promise.all([load(), loadAnalytics(), current==="months"?loadMonths():Promise.resolve()]);
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha ao arquivar."); } finally { setBusy(false); }
+  }
+  function archiveBox() {
+    if (user?.role!=="super_admin") return null;
+    const today = new Date().toLocaleDateString("sv-SE",{timeZone:"America/Sao_Paulo"});
+    if (!archForm) return <button className="btn secondary" onClick={()=>setArchForm({from:today.slice(0,8)+"01",to:today})}>Arquivar atividades</button>;
+    return <form className="panel row" onSubmit={e=>{e.preventDefault();void archivePeriod();}}><strong>Arquivar concluídas no período</strong><label className="move">De<input className="field" type="date" value={archForm.from} max={archForm.to||undefined} onChange={e=>setArchForm(f=>f&&{...f,from:e.target.value})}/></label><label className="move">Até<input className="field" type="date" value={archForm.to} min={archForm.from||undefined} onChange={e=>setArchForm(f=>f&&{...f,to:e.target.value})}/></label><button className="btn" disabled={busy}>Arquivar</button><button type="button" className="btn ghost" onClick={()=>setArchForm(null)}>Cancelar</button></form>;
+  }
   async function changeMonth(m:string, action:"reopen"|"delete") {
     const label = monthName(m);
     if (!window.confirm(action==="reopen" ? `Reabrir ${label}? As atividades voltam para a folha atual.` : `Excluir DE VEZ as atividades concluídas de ${label}? Informações e ocorrências também serão apagadas. Não dá para desfazer.`)) return;
@@ -572,7 +592,9 @@ export default function Home() {
         const occColors=[PAL.navy,PAL.blue,PAL.sky,PAL.gold,PAL.amber,PAL.red];
         const onTime=Number(sm.total)?Math.round(100*(Number(sm.total)-Number(sm.overdue))/Number(sm.total)):0;
         const legendStd=<div className="legend"><span><i className="legend-dot" style={{background:PAL.navy}}/>Concluídas</span><span><i className="legend-dot" style={{background:PAL.gold}}/>Pendentes</span><span><i className="legend-dot" style={{background:PAL.red}}/>Atrasadas</span></div>;
+        const archived=Number(sm.archived_done??0), fresh=Number(sm.completed??0);
         return <>
+        <div className="panel spread"><div className="row"><div><span className="muted">Feitas no total</span><strong className="stats">{archived+fresh}</strong></div><div><span className="muted">Arquivadas</span><strong className="stats">{archived}</strong></div><div><span className="muted">Novas (folha atual)</span><strong className="stats">{fresh}</strong></div></div><div className="row">{archiveBox()}<button className="btn sm ghost" onClick={()=>go("months")}>Ver arquivadas →</button></div></div>
         <div className="kpi-row">{kpis.map(k=><button key={k.label} type="button" className={"panel kpi kpi-btn"+(k.cls??"")} onClick={()=>drill(k.f)}><span className="muted">{k.label}</span><strong className="stats">{k.value}</strong><span className="kpi-note">{k.note} <span aria-hidden="true">→</span></span></button>)}</div>
         <div className="dash-tabs" role="tablist">{([["geral","Visão geral"],["equipe","Equipe"],["equipamentos","Equipamentos"],["historico","Histórico"]] as const).map(([k,l])=><button key={k} role="tab" aria-selected={dashTab===k} className={"dash-tab"+(dashTab===k?" active":"")} onClick={()=>setDashTab(k)}>{l}</button>)}</div>
         {dashTab==="geral"&&<>
@@ -652,6 +674,7 @@ export default function Home() {
           </form>:<button type="button" className="btn sm secondary edit-btn" onClick={()=>startEdit(o)}>Editar informações</button>)}{admin&&(o.status==="completed"?o.assigned_username&&<div className="order-meta">Responsável: {o.assigned_username}</div>:<form className="assign-edit" onSubmit={e=>{e.preventDefault();void changeAssignee(o.id,assignEdit[o.id]??"",o.order_number||o.title);}}><label className="move">Responsável<input className="field" list="ord-people" placeholder="nome.sobrenome" value={assignEdit[o.id]??o.assigned_username??""} onChange={e=>setAssignEdit(a=>({...a,[o.id]:e.target.value}))}/></label>{assignEdit[o.id]!==undefined&&assignEdit[o.id].trim()!==(o.assigned_username??"")&&<button className="btn sm">Trocar responsável</button>}</form>)}{o.sap_created!=null&&<div className={o.sap_created?"sap-yes":"sap-no"}>{o.sap_created?"✓ Ordem criada no SAP":"✗ Ordem não criada no SAP"}</div>}{o.status!=="completed"?<label className="move">Data de execução<input className="field" type="date" value={o.scheduled_for?.slice(0,10)??""} onChange={e=>e.target.value&&void changeOrderDate(o,e.target.value)}/></label>:o.scheduled_for&&<div className="order-meta">Data: {new Date(o.scheduled_for.slice(0,10)+"T12:00:00").toLocaleDateString("pt-BR")}</div>}{o.date_history?.length>0&&<details className="date-history"><summary>Histórico de datas ({o.date_history.length})</summary><ul>{o.date_history.map((h,k)=><li key={k}>{fmtDay(h.from)} → {fmtDay(h.to)} · {h.by} · {new Date(h.at).toLocaleString("pt-BR")}</li>)}</ul></details>}<div className="order-notes"><textarea className="field" rows={2} maxLength={1000} placeholder="Informações sobre a atividade…" value={notes[o.id]??o.notes??""} onChange={e=>setNotes({...notes,[o.id]:e.target.value})}/>{notes[o.id]!==undefined&&notes[o.id]!==(o.notes??"")&&<button className="btn sm" onClick={()=>void saveNotes(o)}>Salvar informações</button>}</div></div>{o.status!=="completed"&&<div className="order-actions">{o.status!=="in_progress"&&<button className="btn sm secondary" onClick={()=>void updateStatus(o,"in_progress")}>Iniciar</button>}<button className="btn sm" onClick={()=>void updateStatus(o,"completed")}>Concluir</button>{o.status!=="blocked"&&<button className="btn sm ghost" onClick={()=>void updateStatus(o,"blocked")}>Bloquear</button>}<button className="btn sm ghost" onClick={()=>void reportOccurrence(o)}>Ocorrência</button></div>}{o.status==="completed"&&<div className="order-actions"><SapLink label="Dar baixa no SAP" question="Deu baixa no SAP?" value={o.sap_closed} onAnswer={v=>void setSapClosed(o,v)}/><span className="locked">Concluída · bloqueada para edição</span></div>}{user.role==="super_admin"&&<button className="btn sm ghost danger" onClick={()=>void deleteOrder(o)}>Excluir</button>}</li>;})}</ul>}</section>}
     {admin&&current==="months"&&<section className="panel stack"><h2>Meses fechados</h2><p className="muted">Fechar o mês tira da folha atual as atividades concluídas em meses anteriores e guarda cada uma no mês em que foi concluída. As pendentes continuam. Os meses fechados ficam aqui para consulta e comparação.</p>
       {!months?<p className="muted">Carregando…</p>:<>
+        {archiveBox()}
         {user.role==="super_admin"&&<div className="notice spread"><span>{months.pending.length?`Prontas para fechar: ${months.pending.map(p=>`${monthName(p.month)} (${p.count})`).join(", ")}.`:"Nenhuma atividade concluída de meses anteriores na folha atual."}</span><button className="btn" disabled={busy||!months.pending.length} onClick={()=>void closeMonth()}>Fechar mês e abrir folha nova</button></div>}
         <div className="table-wrap"><table><thead><tr><th>Mês</th><th>Concluídas</th><th>Variação</th><th>Tempo</th><th>No prazo</th><th>P3M</th><th>Pessoas</th><th></th></tr></thead><tbody>
           {[{...months.current,current:true},...months.months.map(m=>({...m,current:false}))].map((m,i,all)=>{const prev=all[i+1];const diff=prev&&prev.done?Math.round((m.done-prev.done)/prev.done*100):null;return <tr key={m.month}>

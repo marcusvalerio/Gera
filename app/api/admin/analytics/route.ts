@@ -18,7 +18,8 @@ export async function GET(request: Request) {
         COUNT(*) FILTER (WHERE status = 'blocked')::int AS blocked,
         COUNT(*) FILTER (WHERE scheduled_for < CURRENT_DATE AND status NOT IN ('completed','cancelled'))::int AS overdue,
         COUNT(*) FILTER (WHERE created_at >= now() - make_interval(days => ${days}::int))::int AS created_in_period,
-        COUNT(*) FILTER (WHERE completed_at >= now() - make_interval(days => ${days}::int))::int AS completed_in_period
+        COUNT(*) FILTER (WHERE completed_at >= now() - make_interval(days => ${days}::int))::int AS completed_in_period,
+        (SELECT COUNT(*) FROM work_orders a WHERE a.archived_month IS NOT NULL AND a.status = 'completed')::int AS archived_done
         FROM work_orders WHERE archived_month IS NULL`,
       sql`SELECT status, COUNT(*)::int AS count FROM work_orders WHERE archived_month IS NULL GROUP BY status ORDER BY count DESC`,
       sql`SELECT priority, COUNT(*)::int AS count FROM work_orders WHERE archived_month IS NULL AND status NOT IN ('completed','cancelled') GROUP BY priority ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`,
